@@ -521,6 +521,8 @@ class MainWindow:
                   bg='#7f8c8d', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="키워드 관리", command=self._manage_keywords,
                   bg='#2980b9', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_frame, text="키워드 일괄등록", command=self._bulk_keywords,
+                  bg='#8e44ad', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="엑셀 일괄등록", command=self._import_excel_naver,
                   bg='#27ae60', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
 
@@ -648,6 +650,10 @@ class MainWindow:
         from database.db_manager import update_coupang_product
         update_coupang_product(pid, data)
         self.refresh_coupang_products()
+
+    def _bulk_keywords(self):
+        from gui.bulk_keyword_dialog import BulkKeywordDialog
+        BulkKeywordDialog(self.root, on_done=self.refresh_naver_products)
 
     def _manage_keywords(self):
         sel = self.naver_prod_tree.selection()
