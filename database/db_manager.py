@@ -264,7 +264,7 @@ def get_naver_ranks_for_display(days: int = 7, brand_filter: str = '전체') -> 
         SELECT
             np.id as product_id, np.model_name, np.product_name,
             np.url_naver, np.seller,
-            b.brand_name,
+            b.company_name, b.brand_name,
             k.id as keyword_id, k.keyword, k.type as keyword_type,
             rh.rank, rh.checked_date
         FROM naver_products np
@@ -328,27 +328,20 @@ def save_order(order_id: str, brand_id: int, platform: str,
 def get_naver_daily_sales(days: int = 7, brand_filter: str = '전체') -> List[Dict]:
     """네이버 일별 판매 — 상품+옵션별"""
     conn = get_conn()
-    where = ["o.order_date >= date('now', ? || ' days')", "o.platform='naver'"]
-    params = [f'-{days}']
-
-    if brand_filter != '전체':
-        where.append("b.brand_name=?")
-        params.append(brand_filter)
-
     rows = conn.execute(f"""
         SELECT
             np.id as product_id, np.model_name, np.product_name,
-            b.brand_name,
+            b.company_name, b.brand_name,
             o.option_name, o.order_date,
             SUM(o.quantity) as total_qty,
             SUM(o.revenue)  as total_revenue
         FROM orders o
         JOIN naver_products np ON o.naver_product_id = np.id
         JOIN brands b ON o.brand_id = b.id
-        WHERE {' AND '.join(where)}
+        WHERE o.order_date >= date('now', '-{days} days') AND o.platform='naver'
         GROUP BY o.naver_product_id, o.option_name, o.order_date
         ORDER BY b.id, np.id, o.order_date DESC
-    """, params).fetchall()
+    """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -356,26 +349,19 @@ def get_naver_daily_sales(days: int = 7, brand_filter: str = '전체') -> List[D
 def get_coupang_daily_sales(days: int = 7, brand_filter: str = '전체') -> List[Dict]:
     """쿠팡 일별 판매 — 상품별"""
     conn = get_conn()
-    where = ["o.order_date >= date('now', ? || ' days')", "o.platform='coupang'"]
-    params = [f'-{days}']
-
-    if brand_filter != '전체':
-        where.append("b.brand_name=?")
-        params.append(brand_filter)
-
     rows = conn.execute(f"""
         SELECT
             cp.id as product_id, cp.model_name, cp.product_name,
-            b.brand_name,
+            b.company_name, b.brand_name,
             o.order_date,
             SUM(o.quantity) as total_qty,
             SUM(o.revenue)  as total_revenue
         FROM orders o
         JOIN coupang_products cp ON o.coupang_product_id = cp.id
         JOIN brands b ON o.brand_id = b.id
-        WHERE {' AND '.join(where)}
+        WHERE o.order_date >= date('now', '-{days} days') AND o.platform='coupang'
         GROUP BY o.coupang_product_id, o.order_date
         ORDER BY b.id, cp.id, o.order_date DESC
-    """, params).fetchall()
+    """).fetchall()
     conn.close()
     return [dict(r) for r in rows]

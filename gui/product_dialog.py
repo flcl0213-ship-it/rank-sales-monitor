@@ -18,7 +18,6 @@ class NaverProductDialog(tk.Toplevel):
         fields = [
             ('model_name',       '모델명 (예: B100D)'),
             ('product_name',     '상품명 *'),
-            ('seller',           '판매자/스토어명'),
             ('url_naver',        '네이버 상품 URL'),
             ('naver_product_id', '네이버 상품 ID (선택)'),
         ]

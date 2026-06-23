@@ -30,7 +30,8 @@ DAYS = 7
 class MainWindow:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.brand_var = tk.StringVar(value='전체')
+        self.company_var = tk.StringVar(value='전체')
+        self.brand_var   = tk.StringVar(value='전체')
 
         self._build_toolbar()
         self._build_tabs()
@@ -41,16 +42,24 @@ class MainWindow:
         bar = tk.Frame(self.root, bg='#2c3e50', pady=6)
         bar.pack(fill=tk.X)
 
-        tk.Label(bar, text="브랜드", bg='#2c3e50', fg='white',
+        tk.Label(bar, text="회사", bg='#2c3e50', fg='white',
                  font=('맑은 고딕', 10)).pack(side=tk.LEFT, padx=(12, 4))
-        self.brand_cb = ttk.Combobox(bar, textvariable=self.brand_var, width=12, state='readonly')
+        self.company_cb = ttk.Combobox(bar, textvariable=self.company_var, width=10, state='readonly')
+        self.company_cb.pack(side=tk.LEFT)
+        self.company_cb.bind('<<ComboboxSelected>>', self._on_company_change)
+
+        tk.Label(bar, text="브랜드", bg='#2c3e50', fg='white',
+                 font=('맑은 고딕', 10)).pack(side=tk.LEFT, padx=(10, 4))
+        self.brand_cb = ttk.Combobox(bar, textvariable=self.brand_var, width=14, state='readonly')
         self.brand_cb.pack(side=tk.LEFT)
-        self._reload_brand_filter()
+        self._reload_company_filter()
 
         tk.Button(bar, text="조회", command=self._refresh_current_tab,
                   bg='#3498db', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=8)
         tk.Button(bar, text="지금 체크", command=self._run_check,
                   bg='#27ae60', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT)
+        tk.Button(bar, text="인쇄", command=self._print_current,
+                  bg='#8e44ad', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=8)
 
         self.status_lbl = tk.Label(bar, text="", bg='#2c3e50', fg='#aaa',
                                    font=('맑은 고딕', 9))
@@ -137,18 +146,26 @@ class MainWindow:
         tree = self.naver_tree
         tree.delete(*tree.get_children())
 
-        brand_filter = self.brand_var.get()
-        today        = date.today()
-        date_strs    = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
+        company_filter = self.company_var.get()
+        brand_filter   = self.brand_var.get()
+        today          = date.today()
+        date_strs      = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
 
         rank_rows  = get_naver_ranks_for_display(DAYS)
-        sales_rows = get_naver_daily_sales(DAYS, brand_filter)
+        sales_rows = get_naver_daily_sales(DAYS)
+
+        def _match(row):
+            if company_filter != '전체' and row.get('company_name') != company_filter:
+                return False
+            if brand_filter != '전체' and row['brand_name'] != brand_filter:
+                return False
+            return True
 
         # 순위 데이터 정리
         rank_data: dict = defaultdict(dict)   # (pid, kid) → date → rank
         product_info: dict = {}
         for r in rank_rows:
-            if brand_filter != '전체' and r['brand_name'] != brand_filter:
+            if not _match(r):
                 continue
             key = (r['product_id'], r['keyword_id'])
             if r['checked_date']:
@@ -158,6 +175,8 @@ class MainWindow:
         # 판매 데이터 정리: pid → option → date → qty
         sales_data: dict = defaultdict(lambda: defaultdict(dict))
         for s in sales_rows:
+            if not _match(s):
+                continue
             pid = s['product_id']
             opt = s['option_name'] or '(옵션없음)'
             sales_data[pid][opt][s['order_date']] = s['total_qty']
@@ -165,7 +184,7 @@ class MainWindow:
         # 그룹화
         grouped: dict = defaultdict(lambda: defaultdict(list))
         for r in rank_rows:
-            if brand_filter != '전체' and r['brand_name'] != brand_filter:
+            if not _match(r):
                 continue
             grouped[r['brand_name']][r['product_id']].append(r)
 
@@ -296,12 +315,17 @@ class MainWindow:
         tree = self.coupang_tree
         tree.delete(*tree.get_children())
 
-        brand_filter = self.brand_var.get()
-        today     = date.today()
-        date_strs = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
+        company_filter = self.company_var.get()
+        brand_filter   = self.brand_var.get()
+        today          = date.today()
+        date_strs      = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
 
-        sales_rows = get_coupang_daily_sales(DAYS, brand_filter)
-        prods      = {p['id']: p for p in get_coupang_products()}
+        sales_rows   = get_coupang_daily_sales(DAYS)
+        brand_company = {b['brand_name']: b['company_name'] for b in get_all_brands()}
+        prods_list   = get_coupang_products()
+        for p in prods_list:
+            p['company_name'] = brand_company.get(p['brand_name'], '')
+        prods = {p['id']: p for p in prods_list}
 
         sales_data: dict = defaultdict(dict)  # pid → date → qty
         for s in sales_rows:
@@ -309,8 +333,15 @@ class MainWindow:
 
         day_totals = defaultdict(int)
 
-        for pid, p in prods.items():
+        def _match_cp(p):
+            if company_filter != '전체' and p.get('company_name', '') != company_filter:
+                return False
             if brand_filter != '전체' and p['brand_name'] != brand_filter:
+                return False
+            return True
+
+        for pid, p in prods.items():
+            if not _match_cp(p):
                 continue
             url = p.get('url_coupang', '')
             vals = []
@@ -496,12 +527,11 @@ class MainWindow:
         tree_frame = tk.Frame(frame)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
-        cols = ('id', 'brand', 'model', 'product', 'seller', 'url', 'keywords')
+        cols = ('brand', 'model', 'product', 'url', 'keywords')
         self.naver_prod_tree = ttk.Treeview(tree_frame, columns=cols, show='headings', height=20)
-        headers = {'id':'ID', 'brand':'브랜드', 'model':'모델명', 'product':'상품명',
-                   'seller':'판매자', 'url':'네이버URL', 'keywords':'키워드수'}
-        widths  = {'id':40, 'brand':80, 'model':100, 'product':200,
-                   'seller':100, 'url':250, 'keywords':70}
+        headers = {'brand':'브랜드', 'model':'모델명', 'product':'상품명',
+                   'url':'네이버URL', 'keywords':'키워드수'}
+        widths  = {'brand':90, 'model':110, 'product':220, 'url':260, 'keywords':70}
         for col in cols:
             self.naver_prod_tree.heading(col, text=headers[col])
             self.naver_prod_tree.column(col, width=widths[col])
@@ -558,9 +588,8 @@ class MainWindow:
             kws = get_keywords(p['id'])
             url = p['url_naver']
             tree.insert('', tk.END, iid=str(p['id']), values=(
-                p['id'], p['brand_name'], p.get('model_name', ''), p['product_name'],
-                p['seller'],
-                url[:50] + '...' if len(url) > 50 else url,
+                p['brand_name'], p.get('model_name', ''), p['product_name'],
+                url[:55] + '...' if len(url) > 55 else url,
                 f"{len(kws)}개",
             ))
 
@@ -701,11 +730,110 @@ class MainWindow:
             if pid in prods and prods[pid]['url_coupang']:
                 webbrowser.open(prods[pid]['url_coupang'])
 
+    def _reload_company_filter(self):
+        all_brands = get_all_brands()
+        companies = ['전체'] + sorted(set(b['company_name'] for b in all_brands if b['company_name']))
+        self.company_cb['values'] = companies
+        if self.company_var.get() not in companies:
+            self.company_var.set('전체')
+        self._reload_brand_filter()
+
     def _reload_brand_filter(self):
-        brands = ['전체'] + [b['brand_name'] for b in get_all_brands()]
+        all_brands = get_all_brands()
+        company = self.company_var.get()
+        if company == '전체':
+            brands = ['전체'] + [b['brand_name'] for b in all_brands]
+        else:
+            brands = ['전체'] + [b['brand_name'] for b in all_brands if b['company_name'] == company]
         self.brand_cb['values'] = brands
         if self.brand_var.get() not in brands:
             self.brand_var.set('전체')
+
+    def _on_company_change(self, event=None):
+        self.brand_var.set('전체')
+        self._reload_brand_filter()
+        self._refresh_current_tab()
+
+    def _print_current(self):
+        tab = self.nb.index(self.nb.select())
+        if tab == 0:
+            self._print_tree(self.naver_tree,   '네이버 현황',
+                             skip_cols={'link'},   date_start=4)
+        elif tab == 1:
+            self._print_tree(self.coupang_tree, '쿠팡 현황',
+                             skip_cols={'link'},   date_start=3)
+        else:
+            from tkinter import messagebox
+            messagebox.showinfo("인쇄", "네이버 현황 또는 쿠팡 현황 탭에서만 인쇄할 수 있습니다.")
+
+    def _print_tree(self, tree, title: str, skip_cols: set, date_start: int):
+        import tempfile, os, webbrowser
+        from datetime import datetime
+
+        # 헤더 (skip_cols 제외, product·상품명 제외)
+        all_cols = tree['columns']
+        skip_cols = skip_cols | {'product'}
+        cols = [c for c in all_cols if c not in skip_cols]
+        headers = [tree.heading(c)['text'] for c in cols]
+
+        col_idx = {c: i for i, c in enumerate(all_cols)}
+
+        rows_html = []
+        for iid in tree.get_children():
+            vals = tree.item(iid, 'values')
+            tags = tree.item(iid, 'tags')
+            row_vals = [vals[col_idx[c]] for c in cols]
+
+            if 'total_row' in tags:
+                style = 'background:#ecf0f1;font-weight:bold;'
+            elif 'rank_row' in tags:
+                style = 'background:#eaf4fb;'
+            elif 'sales_row' in tags:
+                style = 'background:#fffde7;font-weight:bold;'
+            elif 'option_row' in tags:
+                style = 'background:#fef9e7;'
+            else:
+                style = ''
+
+            cells = ''.join(f'<td>{v}</td>' for v in row_vals)
+            rows_html.append(f'<tr style="{style}">{cells}</tr>')
+
+        company = self.company_var.get()
+        brand   = self.brand_var.get()
+        filter_txt = f"회사: {company} | 브랜드: {brand}"
+
+        header_cells = ''.join(f'<th>{h}</th>' for h in headers)
+        now = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+        html = f"""<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+  body {{ font-family: '맑은 고딕', Arial, sans-serif; font-size: 11px; margin: 12px; }}
+  h2 {{ margin-bottom: 4px; }}
+  .info {{ color: #555; margin-bottom: 8px; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th {{ background: #2c3e50; color: white; padding: 5px 8px; text-align: center; }}
+  td {{ border: 1px solid #ddd; padding: 4px 7px; text-align: center; white-space: nowrap; }}
+  td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
+  @media print {{ @page {{ size: landscape; margin: 10mm; }} }}
+</style>
+</head><body>
+<h2>{title}</h2>
+<div class="info">{filter_txt} &nbsp;|&nbsp; 출력일시: {now}</div>
+<table>
+<thead><tr>{header_cells}</tr></thead>
+<tbody>{''.join(rows_html)}</tbody>
+</table>
+<script>window.onload = function(){{ window.print(); }}</script>
+</body></html>"""
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.html',
+                                          mode='w', encoding='utf-8')
+        tmp.write(html)
+        tmp.close()
+        webbrowser.open(f'file:///{tmp.name}')
 
     def _run_check(self):
         def _check():
