@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 엑셀 일괄 등록 다이얼로그
-엑셀 형식: NO | 브랜드 | 네이버모델명 | 네이버링크 | 쿠팡모델명 | 쿠팡상품명 | 쿠팡링크 | 비고
+엑셀 형식: NO | 회사명 | 브랜드 | 모델명 | 상품명 | 링크 | 비고
+  - 네이버/쿠팡 각각 별도 파일
+  - 회사명·브랜드·모델명은 그룹 첫 행에만 입력, 이후 행은 위 값 이어받음
 """
 
 import tkinter as tk
@@ -10,14 +12,14 @@ from typing import Callable
 
 
 class ExcelImportDialog(tk.Toplevel):
-    def __init__(self, parent, target: str = 'both', on_done: Callable = None):
+    def __init__(self, parent, target: str = 'naver', on_done: Callable = None):
         """
-        target: 'naver' | 'coupang' | 'both'
+        target: 'naver' | 'coupang'
         """
         super().__init__(parent)
-        target_label = {'naver': '네이버', 'coupang': '쿠팡', 'both': '전체'}
-        self.title(f"엑셀 일괄 등록 — {target_label.get(target, '전체')}")
-        self.geometry("700x500")
+        target_label = {'naver': '네이버', 'coupang': '쿠팡'}
+        self.title(f"엑셀 일괄 등록 — {target_label.get(target, target)}")
+        self.geometry("700x520")
         self.resizable(True, True)
         self.grab_set()
         self.target    = target
@@ -37,23 +39,20 @@ class ExcelImportDialog(tk.Toplevel):
                   bg='#7f8c8d', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT)
 
         # 안내
+        plat = '네이버' if self.target == 'naver' else '쿠팡'
         info = (
-            "엑셀 형식 안내:\n"
-            "  • 헤더 행: NO | 브랜드 | 네이버(모델명, 링크) | 쿠팡(모델명, 상품명, 링크) | 비고\n"
-            "  • 브랜드 열: 비어있으면 위 행의 브랜드를 이어받음\n"
-            "  • 네이버 링크가 있으면 → 네이버 상품으로 등록\n"
-            "  • 쿠팡 링크가 있으면 → 쿠팡 상품으로 등록\n"
-            "  • 브랜드명은 브랜드 관리에 등록된 이름과 일치해야 합니다\n"
-            "    (예: 웅테크삼성 → 인생필터 브랜드명으로 매핑 필요)\n"
+            f"[{plat}] 엑셀 형식: NO | 회사명 | 브랜드 | 모델명 | 상품명 | 링크 | 비고\n"
+            "  • 데이터는 4행부터 시작\n"
+            "  • 회사명·브랜드·모델명이 비어 있으면 위 행 값을 이어받음\n"
+            "  • 브랜드명이 DB와 다를 경우 아래 매핑 추가"
         )
         tk.Label(self, text=info, justify=tk.LEFT, fg='#555',
                  font=('맑은 고딕', 9), bg='#f8f9fa', relief=tk.GROOVE,
                  padx=10, pady=8).pack(fill=tk.X, padx=12)
 
-        # 브랜드 매핑 섹션
-        map_lbl = tk.Label(self, text="엑셀 브랜드명 → DB 브랜드명 매핑",
-                           font=('맑은 고딕', 10, 'bold'))
-        map_lbl.pack(anchor='w', padx=12, pady=(8, 2))
+        # 브랜드 매핑
+        tk.Label(self, text="브랜드 매핑  (엑셀 브랜드명 → DB 브랜드명)",
+                 font=('맑은 고딕', 10, 'bold')).pack(anchor='w', padx=12, pady=(8, 2))
 
         self.map_frame = tk.Frame(self)
         self.map_frame.pack(fill=tk.X, padx=12)
@@ -75,11 +74,6 @@ class ExcelImportDialog(tk.Toplevel):
         tk.Button(btn_frame, text="닫기", command=self.destroy,
                   relief=tk.FLAT, padx=12).pack(side=tk.LEFT, padx=6)
 
-        # 기본 매핑 자동 추가
-        self._add_mapping('웅테크 삼성', '인생필터')
-        self._add_mapping('웅테크엘지', '인생필터')
-        self._add_mapping('웅테크위닉스', '인생필터')
-
     def _browse(self):
         path = filedialog.askopenfilename(
             filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
@@ -97,10 +91,10 @@ class ExcelImportDialog(tk.Toplevel):
         db_var    = tk.StringVar(value=db_brand)
 
         tk.Label(f, text="엑셀:", width=5).pack(side=tk.LEFT)
-        tk.Entry(f, textvariable=excel_var, width=20).pack(side=tk.LEFT, padx=4)
+        tk.Entry(f, textvariable=excel_var, width=22).pack(side=tk.LEFT, padx=4)
         tk.Label(f, text="→ DB:").pack(side=tk.LEFT)
         brands = [b['brand_name'] for b in get_all_brands()]
-        cb = ttk.Combobox(f, textvariable=db_var, values=brands, width=16, state='readonly')
+        cb = ttk.Combobox(f, textvariable=db_var, values=brands, width=18, state='readonly')
         cb.pack(side=tk.LEFT, padx=4)
 
         self.mappings.append((excel_var, db_var))
@@ -123,48 +117,48 @@ class ExcelImportDialog(tk.Toplevel):
             return None
 
         try:
-            wb = openpyxl.load_workbook(path)
+            wb = openpyxl.load_workbook(path, data_only=True)
         except Exception as e:
             messagebox.showerror("오류", f"파일을 열 수 없습니다:\n{e}", parent=self)
             return None
 
-        mapping = self._get_mapping()
-        records = []
-        cur_brand = ''
+        mapping    = self._get_mapping()
+        records    = []
+        cur_company = ''
+        cur_brand   = ''
+        cur_model   = ''
 
-        for ws in wb.worksheets:
-            for row in ws.iter_rows(min_row=5, values_only=True):
-                no, brand, n_model, n_link, c_model, c_name, c_link, *_ = list(row) + [None]*8
+        ws = wb.active
+        for row in ws.iter_rows(min_row=4, values_only=True):
+            no, company, brand, model, product_name, link, *_ = list(row) + [None] * 7
 
-                if brand:
-                    cur_brand = str(brand).strip()
+            # 헤더 행 스킵
+            if str(no).strip().upper() == 'NO':
+                continue
 
-                db_brand = mapping.get(cur_brand, cur_brand)
+            # 이전 값 이어받기
+            if company:
+                cur_company = str(company).strip()
+            if brand:
+                cur_brand = str(brand).strip()
+            if model:
+                cur_model = str(model).strip()
 
-                if n_link:
-                    records.append({
-                        'platform':   'naver',
-                        'brand_name': db_brand,
-                        'model_name': str(n_model).strip() if n_model else '',
-                        'product_name': str(n_model).strip() if n_model else '',
-                        'url':        str(n_link).strip(),
-                    })
+            if not product_name or not link:
+                continue
 
-                if c_link and c_name:
-                    records.append({
-                        'platform':     'coupang',
-                        'brand_name':   db_brand,
-                        'model_name':   str(c_model).strip() if c_model else '',
-                        'product_name': str(c_name).strip(),
-                        'url':          str(c_link).strip(),
-                    })
+            db_brand = mapping.get(cur_brand, cur_brand)
+
+            records.append({
+                'platform':     self.target,
+                'company_name': cur_company,
+                'brand_name':   db_brand,
+                'model_name':   cur_model,
+                'product_name': str(product_name).strip(),
+                'url':          str(link).strip(),
+            })
 
         return records
-
-    def _filter(self, records):
-        if self.target == 'both':
-            return records
-        return [r for r in records if r['platform'] == self.target]
 
     def _preview(self):
         self.log_text.config(state=tk.NORMAL)
@@ -175,29 +169,25 @@ class ExcelImportDialog(tk.Toplevel):
         if records is None:
             return
 
-        records = self._filter(records)
-        naver_cnt   = sum(1 for r in records if r['platform'] == 'naver')
-        coupang_cnt = sum(1 for r in records if r['platform'] == 'coupang')
-        self._log(f"미리보기: 총 {len(records)}건 (네이버 {naver_cnt}건, 쿠팡 {coupang_cnt}건)")
+        self._log(f"미리보기: 총 {len(records)}건")
         self._log("-" * 60)
-        for r in records[:20]:
-            self._log(f"[{r['platform']}] {r['brand_name']} | {r['model_name']} | {r['product_name'][:40]}")
-        if len(records) > 20:
-            self._log(f"... 외 {len(records)-20}건")
+        for r in records[:30]:
+            self._log(f"[{r['brand_name']}] {r['model_name']} | {r['product_name'][:50]}")
+        if len(records) > 30:
+            self._log(f"... 외 {len(records) - 30}건")
 
     def _run(self):
         records = self._parse_excel()
         if records is None:
             return
-        records = self._filter(records)
 
         from database.db_manager import (
             get_all_brands, add_naver_product, add_coupang_product,
             get_naver_products, get_coupang_products,
         )
 
-        brands = {b['brand_name']: b['id'] for b in get_all_brands()}
-        existing_naver   = {p['url_naver'] for p in get_naver_products() if p['url_naver']}
+        brands           = {b['brand_name']: b['id'] for b in get_all_brands()}
+        existing_naver   = {p['url_naver']   for p in get_naver_products()   if p['url_naver']}
         existing_coupang = {p['url_coupang'] for p in get_coupang_products() if p['url_coupang']}
 
         saved = skipped = error = 0
@@ -208,11 +198,11 @@ class ExcelImportDialog(tk.Toplevel):
         for r in records:
             brand_id = brands.get(r['brand_name'])
             if not brand_id:
-                self._log(f"[SKIP] 브랜드 없음: {r['brand_name']}")
+                self._log(f"[오류] 브랜드 없음: '{r['brand_name']}' — 매핑을 추가하거나 브랜드 관리에서 등록하세요.")
                 error += 1
                 continue
 
-            if r['platform'] == 'naver':
+            if self.target == 'naver':
                 if r['url'] in existing_naver:
                     skipped += 1
                     continue
@@ -220,12 +210,13 @@ class ExcelImportDialog(tk.Toplevel):
                     'brand_id':     brand_id,
                     'model_name':   r['model_name'],
                     'product_name': r['product_name'],
+                    'seller':       '',
                     'url_naver':    r['url'],
                 })
                 existing_naver.add(r['url'])
                 saved += 1
 
-            else:
+            else:  # coupang
                 if r['url'] in existing_coupang:
                     skipped += 1
                     continue
