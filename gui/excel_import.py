@@ -182,7 +182,8 @@ class ExcelImportDialog(tk.Toplevel):
             return
 
         from database.db_manager import (
-            get_all_brands, add_naver_product, add_coupang_product,
+            get_all_brands, add_brand,
+            add_naver_product, add_coupang_product,
             get_naver_products, get_coupang_products,
         )
 
@@ -198,9 +199,13 @@ class ExcelImportDialog(tk.Toplevel):
         for r in records:
             brand_id = brands.get(r['brand_name'])
             if not brand_id:
-                self._log(f"[오류] 브랜드 없음: '{r['brand_name']}' — 매핑을 추가하거나 브랜드 관리에서 등록하세요.")
-                error += 1
-                continue
+                # 브랜드 자동 생성 (API 키는 나중에 브랜드 관리에서 입력)
+                brand_id = add_brand({
+                    'company_name': r['company_name'],
+                    'brand_name':   r['brand_name'],
+                })
+                brands[r['brand_name']] = brand_id
+                self._log(f"[브랜드 자동 생성] {r['company_name']} / {r['brand_name']}")
 
             if self.target == 'naver':
                 if r['url'] in existing_naver:
