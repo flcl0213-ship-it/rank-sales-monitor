@@ -4,27 +4,21 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-import urllib.request
-import json
-import time
 
 
-def _naver_suggest(keyword: str):
-    """네이버 자동완성 키워드 가져오기"""
+def _db_suggest(keyword: str):
+    """DB에 등록된 키워드 중 유사어 반환"""
     try:
-        url = (f"https://ac.search.naver.com/nx/ac"
-               f"?q={urllib.parse.quote(keyword)}&st=1110&frm=nv"
-               f"&r_format=json&r_enc=UTF-8&r_unicode=0&t_koreng=1&ans=2")
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as res:
-            data = json.loads(res.read().decode('utf-8'))
-            items = data.get('items', [[]])[0]
-            return [item[0] for item in items[:10]]
+        from database.db_manager import get_conn
+        conn = get_conn()
+        rows = conn.execute(
+            "SELECT DISTINCT keyword FROM keywords WHERE keyword LIKE ? AND status='active' ORDER BY keyword LIMIT 15",
+            (f'%{keyword}%',)
+        ).fetchall()
+        conn.close()
+        return [r['keyword'] for r in rows]
     except Exception:
         return []
-
-
-import urllib.parse
 
 
 class _AutoEntry(tk.Frame):
@@ -59,13 +53,11 @@ class _AutoEntry(tk.Frame):
         if len(kw) < 2:
             self._close_popup()
             return
-        self._timer = self.after(350, lambda: self._fetch(kw))
+        self._timer = self.after(200, lambda: self._fetch(kw))
 
     def _fetch(self, kw):
-        def run():
-            suggestions = _naver_suggest(kw)
-            self.after(0, lambda: self._show_popup(suggestions))
-        threading.Thread(target=run, daemon=True).start()
+        suggestions = _db_suggest(kw)
+        self._show_popup(suggestions)
 
     def _show_popup(self, suggestions):
         self._close_popup()
@@ -136,7 +128,7 @@ class BulkKeywordDialog(tk.Toplevel):
         self.filter_cb.pack(side=tk.LEFT, padx=6)
         self.filter_cb.bind('<<ComboboxSelected>>', lambda e: self._load())
 
-        tk.Label(top, text="  ※ 2자 이상 입력하면 네이버 자동완성 제안이 표시됩니다",
+        tk.Label(top, text="  ※ 2자 이상 입력하면 등록된 키워드 중 유사어가 표시됩니다",
                  fg='#777', font=('맑은 고딕', 8)).pack(side=tk.LEFT)
 
         # 테이블 헤더
