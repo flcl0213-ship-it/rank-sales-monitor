@@ -34,7 +34,7 @@ class _AutoEntry(tk.Frame):
                               font=('맑은 고딕', 9))
         self.entry.pack(fill=tk.X)
         self.var.trace_add('write', self._on_change)
-        self.entry.bind('<FocusOut>', self._close_popup)
+        self.entry.bind('<FocusOut>', lambda e: self.after(150, self._close_popup))
         self.entry.bind('<Escape>',  lambda e: self._close_popup())
         self.entry.bind('<Down>',    self._focus_popup)
 
@@ -79,9 +79,10 @@ class _AutoEntry(tk.Frame):
         for s in suggestions:
             lb.insert(tk.END, s)
 
-        lb.bind('<ButtonRelease-1>', lambda e: self._pick(lb))
-        lb.bind('<Return>',          lambda e: self._pick(lb))
-        lb.bind('<Escape>',          lambda e: self._close_popup())
+        lb.bind('<Button-1>',   lambda e: lb.after(10, lambda: self._pick(lb)))
+        lb.bind('<Return>',     lambda e: self._pick(lb))
+        lb.bind('<Escape>',     lambda e: self._close_popup())
+        lb.bind('<FocusOut>',   lambda e: self.after(150, self._close_popup))
 
     def _pick(self, lb):
         sel = lb.curselection()
