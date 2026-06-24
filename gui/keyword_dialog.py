@@ -12,7 +12,7 @@ class KeywordDialog(tk.Toplevel):
         super().__init__(parent)
         plat_label = '네이버' if platform == 'naver' else '쿠팡'
         self.title(f"키워드 관리 [{plat_label}] — {product['product_name']}")
-        self.geometry("560x440")
+        self.geometry("600x500")
         self.resizable(True, True)
         self.grab_set()
         self.product   = product
@@ -40,7 +40,7 @@ class KeywordDialog(tk.Toplevel):
 
         # 목록
         cols = ('id', 'type', 'keyword')
-        self.tree = ttk.Treeview(self, columns=cols, show='headings', height=14)
+        self.tree = ttk.Treeview(self, columns=cols, show='headings', height=12)
         self.tree.heading('id',      text='ID')
         self.tree.heading('type',    text='구분')
         self.tree.heading('keyword', text='키워드')
