@@ -112,7 +112,7 @@ class BulkKeywordDialog(tk.Toplevel):
         self.resizable(True, True)
         self.grab_set()
         self.on_done = on_done
-        self._rows   = []   # (product_dict, AutoEntry)
+        self._rows   = []   # (product_dict, main_AutoEntry, sub_AutoEntry)
 
         self._build()
         self._load()
@@ -135,7 +135,8 @@ class BulkKeywordDialog(tk.Toplevel):
         # 테이블 헤더
         hdr = tk.Frame(self, bg='#2c3e50')
         hdr.pack(fill=tk.X, padx=10)
-        for txt, w in [('브랜드', 90), ('모델명', 90), ('상품명', 260), ('대표 키워드 입력', 200)]:
+        for txt, w in [('브랜드', 90), ('모델명', 90), ('상품명', 220),
+                       ('대표 키워드', 160), ('서브 키워드 (쉼표 구분)', 220)]:
             tk.Label(hdr, text=txt, bg='#2c3e50', fg='white',
                      width=w//7, anchor='w',
                      font=('맑은 고딕', 9, 'bold')).pack(side=tk.LEFT, padx=4, pady=3)
@@ -203,31 +204,54 @@ class BulkKeywordDialog(tk.Toplevel):
                      bg=bg, width=38, anchor='w',
                      font=('맑은 고딕', 9)).pack(side=tk.LEFT)
 
-            ae = _AutoEntry(row, width=24)
-            ae.pack(side=tk.LEFT, padx=4, pady=2)
+            ae_main = _AutoEntry(row, width=20)
+            ae_main.pack(side=tk.LEFT, padx=4, pady=2)
             if existing:
-                ae.set(existing)
+                ae_main.set(existing)
 
-            self._rows.append((p, ae))
+            # 서브 키워드 (쉼표 구분, 자동완성 없이 단순 Entry)
+            existing_subs = ','.join(
+                k['keyword'] for k in get_keywords(p['id'])
+                if k['type'] == 'sub'
+            )
+            sub_var = tk.StringVar(value=existing_subs)
+            sub_entry = tk.Entry(row, textvariable=sub_var, width=28,
+                                 font=('맑은 고딕', 9))
+            sub_entry.pack(side=tk.LEFT, padx=4, pady=2)
+
+            self._rows.append((p, ae_main, sub_var))
 
     def _save(self):
         from database.db_manager import get_keywords, add_keyword, delete_keyword
 
-        saved = skipped = 0
-        for p, ae in self._rows:
-            kw = ae.get()
-            if not kw:
-                continue
-            existing_main = [k for k in get_keywords(p['id']) if k['type'] == 'main']
-            if existing_main:
-                if existing_main[0]['keyword'] == kw:
+        saved_main = saved_sub = skipped = 0
+        for p, ae_main, sub_var in self._rows:
+            pid = p['id']
+
+            # 대표 키워드
+            kw = ae_main.get()
+            if kw:
+                existing_main = [k for k in get_keywords(pid) if k['type'] == 'main']
+                if existing_main and existing_main[0]['keyword'] == kw:
                     skipped += 1
-                    continue
-                delete_keyword(existing_main[0]['id'])
-            add_keyword(p['id'], kw, ktype='main', platform='naver')
-            saved += 1
+                elif kw:
+                    for k in existing_main:
+                        delete_keyword(k['id'])
+                    add_keyword(pid, kw, ktype='main', platform='naver')
+                    saved_main += 1
+
+            # 서브 키워드
+            sub_text = sub_var.get().strip()
+            if sub_text:
+                new_subs = [s.strip() for s in sub_text.split(',') if s.strip()]
+                existing_subs = {k['keyword'] for k in get_keywords(pid) if k['type'] == 'sub'}
+                for s in new_subs:
+                    if s not in existing_subs:
+                        add_keyword(pid, s, ktype='sub', platform='naver')
+                        saved_sub += 1
 
         messagebox.showinfo("완료",
-            f"저장: {saved}개 / 변경없음: {skipped}개", parent=self)
+            f"대표키워드 저장: {saved_main}개 / 서브키워드 신규: {saved_sub}개 / 변경없음: {skipped}개",
+            parent=self)
         if self.on_done:
             self.on_done()

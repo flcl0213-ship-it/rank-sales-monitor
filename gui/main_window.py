@@ -99,12 +99,12 @@ class MainWindow:
             for i in range(DAYS)
         ]
 
-        cols = ('brand', 'model', 'product', 'link', 'type') + tuple(self.naver_date_cols) + ('summary',)
+        cols = ('brand', 'model', 'product', 'link', 'type') + tuple(self.naver_date_cols) + ('summary', 'compare')
         self.naver_tree = ttk.Treeview(frame, columns=cols, show='headings', height=25)
 
         col_widths = {
             'brand': 70, 'model': 80, 'product': 160,
-            'link': 40, 'type': 70, 'summary': 90,
+            'link': 40, 'type': 70, 'summary': 90, 'compare': 55,
         }
         self.naver_tree.heading('brand',   text='브랜드')
         self.naver_tree.heading('model',   text='모델명')
@@ -112,6 +112,7 @@ class MainWindow:
         self.naver_tree.heading('link',    text='링크')
         self.naver_tree.heading('type',    text='구분')
         self.naver_tree.heading('summary', text='합계/평균')
+        self.naver_tree.heading('compare', text='키워드비교')
 
         for col in cols:
             w = col_widths.get(col, 60)
@@ -140,7 +141,7 @@ class MainWindow:
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 
-        self.naver_tree.bind('<Double-1>', self._on_naver_link_click)
+        self.naver_tree.bind('<Button-1>', self._on_naver_click)
 
     def refresh_naver(self):
         tree = self.naver_tree
@@ -228,7 +229,7 @@ class MainWindow:
 
                 tree.insert('', tk.END,
                             values=(brand_name, model_name, product_name,
-                                    '🔗' if url else '', '순위') + tuple(rank_vals) + (summary_rank,),
+                                    '🔗' if url else '', '순위') + tuple(rank_vals) + (summary_rank, '🔍비교'),
                             tags=('rank_row',), iid=f'nrank_{pid}_{kid}')
 
                 # 판매 행 (옵션별)
@@ -838,20 +839,26 @@ class MainWindow:
             self._reload_sub_products()
             self.refresh_sub()
 
-    def _on_naver_link_click(self, event):
+    def _on_naver_click(self, event):
         region = self.naver_tree.identify_region(event.x, event.y)
         if region != 'cell':
             return
-        col = self.naver_tree.identify_column(event.x)
-        if col != '#4':
-            return
         item = self.naver_tree.identify_row(event.y)
-        vals = self.naver_tree.item(item, 'values')
-        if vals and vals[3] == '🔗' and item.startswith('nrank_'):
-            pid = int(item.split('_')[1])
-            prods = {p['id']: p for p in get_naver_products()}
+        if not item or not item.startswith('nrank_'):
+            return
+        cols     = self.naver_tree['columns']
+        col_id   = self.naver_tree.identify_column(event.x)
+        col_name = cols[int(col_id[1:]) - 1]
+        pid      = int(item.split('_')[1])
+        prods    = {p['id']: p for p in get_naver_products()}
+
+        if col_name == 'link':
             if pid in prods and prods[pid]['url_naver']:
                 webbrowser.open(prods[pid]['url_naver'])
+        elif col_name == 'compare':
+            if pid in prods:
+                from gui.keyword_compare_dialog import KeywordCompareDialog
+                KeywordCompareDialog(self.root, product=prods[pid])
 
     def _on_coupang_link_click(self, event):
         region = self.coupang_tree.identify_region(event.x, event.y)
