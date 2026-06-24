@@ -142,6 +142,8 @@ class MainWindow:
         frame.columnconfigure(0, weight=1)
 
         self.naver_tree.bind('<Button-1>', self._on_naver_click)
+        self.naver_tree.bind('<Motion>',   self._on_naver_motion)
+        self.naver_tree.tag_configure('flash', background='#f39c12')
 
     def refresh_naver(self):
         tree = self.naver_tree
@@ -839,6 +841,19 @@ class MainWindow:
             self._reload_sub_products()
             self.refresh_sub()
 
+    def _on_naver_motion(self, event):
+        item = self.naver_tree.identify_row(event.y)
+        if not item or not item.startswith('nrank_'):
+            self.naver_tree.config(cursor='')
+            return
+        cols     = self.naver_tree['columns']
+        col_id   = self.naver_tree.identify_column(event.x)
+        col_name = cols[int(col_id[1:]) - 1]
+        if col_name in ('compare', 'link'):
+            self.naver_tree.config(cursor='hand2')
+        else:
+            self.naver_tree.config(cursor='')
+
     def _on_naver_click(self, event):
         region = self.naver_tree.identify_region(event.x, event.y)
         if region != 'cell':
@@ -857,8 +872,15 @@ class MainWindow:
                 webbrowser.open(prods[pid]['url_naver'])
         elif col_name == 'compare':
             if pid in prods:
-                from gui.keyword_compare_dialog import KeywordCompareDialog
-                KeywordCompareDialog(self.root, product=prods[pid])
+                # 클릭 시 행 깜빡임 효과
+                orig_tags = self.naver_tree.item(item, 'tags')
+                self.naver_tree.item(item, tags=('flash',))
+                self.root.after(180, lambda: self.naver_tree.item(item, tags=orig_tags))
+                self.root.after(100, lambda: _open_compare(prods[pid]))
+
+        def _open_compare(prod):
+            from gui.keyword_compare_dialog import KeywordCompareDialog
+            KeywordCompareDialog(self.root, product=prod)
 
     def _on_coupang_link_click(self, event):
         region = self.coupang_tree.identify_region(event.x, event.y)
