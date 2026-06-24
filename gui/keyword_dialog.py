@@ -50,9 +50,13 @@ class KeywordDialog(tk.Toplevel):
         self.tree.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
         self.tree.tag_configure('main', background='#d6eaf8', font=('맑은 고딕', 9, 'bold'))
 
-        btn = tk.Button(self, text="선택 삭제", command=self._delete,
-                        bg='#c0392b', fg='white', relief=tk.FLAT)
-        btn.pack(pady=6)
+        btn_frame = tk.Frame(self)
+        btn_frame.pack(pady=6)
+        tk.Button(btn_frame, text="선택 삭제", command=self._delete,
+                  bg='#c0392b', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
+        if platform == 'naver':
+            tk.Button(btn_frame, text="키워드 추천 받기", command=self._suggest,
+                      bg='#8e44ad', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
         self._reload()
 
     def _reload(self):
@@ -75,6 +79,21 @@ class KeywordDialog(tk.Toplevel):
         self._reload()
         if self.on_change:
             self.on_change()
+
+    def _suggest(self):
+        from gui.keyword_suggest_dialog import KeywordSuggestDialog
+        # 대표 키워드를 씨앗으로 자동 입력
+        kws = get_keywords(self.product['id'], self.platform)
+        seed = next((k['keyword'] for k in kws if k['type'] == 'main'), '')
+
+        def _on_add(keywords):
+            for kw in keywords:
+                add_keyword(self.product['id'], kw, ktype='sub', platform=self.platform)
+            self._reload()
+            if self.on_change:
+                self.on_change()
+
+        KeywordSuggestDialog(self, seed_keyword=seed, on_add=_on_add)
 
     def _delete(self):
         sel = self.tree.selection()
