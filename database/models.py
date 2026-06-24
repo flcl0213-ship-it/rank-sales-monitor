@@ -87,7 +87,8 @@ def init_db():
         keyword_type     TEXT DEFAULT 'sub',
         rank             INTEGER DEFAULT 0,
         checked_date     DATE NOT NULL,
-        checked_at       DATETIME DEFAULT (datetime('now','localtime'))
+        checked_at       DATETIME DEFAULT (datetime('now','localtime')),
+        UNIQUE(naver_product_id, keyword_id, checked_date)
     )""")
     c.execute("""
     CREATE INDEX IF NOT EXISTS idx_rank_product_date

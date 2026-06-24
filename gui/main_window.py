@@ -99,19 +99,19 @@ class MainWindow:
             for i in range(DAYS)
         ]
 
-        cols = ('brand', 'model', 'product', 'link', 'type') + tuple(self.naver_date_cols) + ('summary', 'compare')
+        cols = ('brand', 'model', 'product', 'link') + tuple(self.naver_date_cols) + ('summary', 'sales', 'compare')
         self.naver_tree = ttk.Treeview(frame, columns=cols, show='headings', height=25)
 
         col_widths = {
             'brand': 70, 'model': 80, 'product': 160,
-            'link': 40, 'type': 70, 'summary': 90, 'compare': 55,
+            'link': 40, 'summary': 90, 'sales': 100, 'compare': 55,
         }
         self.naver_tree.heading('brand',   text='브랜드')
         self.naver_tree.heading('model',   text='모델명')
         self.naver_tree.heading('product', text='상품명')
         self.naver_tree.heading('link',    text='링크')
-        self.naver_tree.heading('type',    text='구분')
-        self.naver_tree.heading('summary', text='합계/평균')
+        self.naver_tree.heading('summary', text='순위평균')
+        self.naver_tree.heading('sales',   text='판매/전일대비')
         self.naver_tree.heading('compare', text='키워드비교')
 
         for col in cols:
@@ -124,10 +124,8 @@ class MainWindow:
         for d in self.naver_date_cols:
             self.naver_tree.heading(d, text=d)
 
-        self.naver_tree.tag_configure('rank_row',   background='#eaf4fb')
-        self.naver_tree.tag_configure('sales_row',  background='#fffde7')
-        self.naver_tree.tag_configure('option_row', background='#fef9e7')
-        self.naver_tree.tag_configure('total_row',  background='#ecf0f1',
+        self.naver_tree.tag_configure('rank_row',  background='#eaf4fb')
+        self.naver_tree.tag_configure('total_row', background='#ecf0f1',
                                       font=('맑은 고딕', 9, 'bold'))
         self.naver_tree.tag_configure('up',   foreground='#c0392b')
         self.naver_tree.tag_configure('down', foreground='#2980b9')
@@ -229,44 +227,34 @@ class MainWindow:
                 valid = [x for x in valid if x and x > 0]
                 summary_rank = f"평균 {sum(valid)/len(valid):.1f}위" if valid else "-"
 
+                # 판매 전일대비 계산
+                options = sales_data.get(pid, {})
+                today_qty = sum(opts.get(date_strs[0], 0) for opts in options.values())
+                yest_qty  = sum(opts.get(date_strs[1], 0) for opts in options.values()) if len(date_strs) > 1 else 0
+                week_total = sum(
+                    sum(opts.get(ds, 0) for opts in options.values())
+                    for ds in date_strs
+                )
+                for ds in date_strs:
+                    day_totals[ds] += sum(opts.get(ds, 0) for opts in options.values())
+
+                diff = today_qty - yest_qty
+                if diff > 0:
+                    sales_txt = f"{today_qty}개 ▲{diff}"
+                elif diff < 0:
+                    sales_txt = f"{today_qty}개 ▼{abs(diff)}"
+                else:
+                    sales_txt = f"{today_qty}개"
+
                 tree.insert('', tk.END,
                             values=(brand_name, model_name, product_name,
-                                    '🔗' if url else '', '순위') + tuple(rank_vals) + (summary_rank, '🔍비교'),
+                                    '🔗' if url else '') + tuple(rank_vals) + (summary_rank, sales_txt, '🔍비교'),
                             tags=('rank_row',), iid=f'nrank_{pid}_{kid}')
 
-                # 판매 행 (옵션별)
-                options = sales_data.get(pid, {})
-                week_total = 0
-                if options:
-                    # 옵션 소계 행
-                    all_opt_vals = []
-                    for ds in date_strs:
-                        day_qty = sum(opts.get(ds, 0) for opts in options.values())
-                        all_opt_vals.append(str(day_qty) if day_qty else '0')
-                        week_total += day_qty
-                        day_totals[ds] += day_qty
-
-                    tree.insert('', tk.END,
-                                values=('', '', '', '', '판매합계') + tuple(all_opt_vals) + (f'{week_total}개',),
-                                tags=('sales_row',), iid=f'nsales_{pid}')
-
-                    # 옵션별 상세 행
-                    for opt_name, opt_dates in options.items():
-                        opt_vals = [str(opt_dates.get(ds, 0)) if opt_dates.get(ds, 0) else '0'
-                                    for ds in date_strs]
-                        opt_total = sum(opt_dates.get(ds, 0) for ds in date_strs)
-                        tree.insert('', tk.END,
-                                    values=('', '', f'  └ {opt_name}', '', '') + tuple(opt_vals) + (f'{opt_total}개',),
-                                    tags=('option_row',), iid=f'nopt_{pid}_{opt_name[:10]}')
-                else:
-                    tree.insert('', tk.END,
-                                values=('', '', '', '', '판매합계') + ('0',) * DAYS + ('0개',),
-                                tags=('sales_row',), iid=f'nsales_{pid}')
-
         # 총합계 행
-        total_vals = ('', '', '', '', '총합계') + tuple(
+        total_vals = ('', '', '[ 판매 총합계 ]', '') + tuple(
             str(day_totals.get(ds, 0)) for ds in date_strs
-        ) + (f"{sum(day_totals.values())}개",)
+        ) + ('', f"{sum(day_totals.values())}개", '')
         tree.insert('', tk.END, values=total_vals, tags=('total_row',))
 
         self.status_lbl.config(text=f"갱신: {date.today()} | 네이버 {len(product_info)}개 상품")
@@ -692,6 +680,8 @@ class MainWindow:
                   bg='#7f8c8d', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="키워드 관리", command=self._manage_coupang_keywords,
                   bg='#2980b9', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_frame, text="키워드 일괄등록", command=self._bulk_coupang_keywords,
+                  bg='#8e44ad', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
         tk.Button(btn_frame, text="엑셀 일괄등록", command=self._import_excel,
                   bg='#27ae60', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
 
@@ -798,15 +788,24 @@ class MainWindow:
         KeywordDialog(self.root, product=prods[pid], platform='naver',
                       on_change=self.refresh_naver_products)
 
+    def _bulk_coupang_keywords(self):
+        from gui.bulk_keyword_dialog import BulkKeywordDialog
+        BulkKeywordDialog(self.root, platform='coupang', on_done=self.refresh_coupang_products)
+
     def _manage_coupang_keywords(self):
-        sel = self.coupang_prod_tree.selection()
-        if not sel:
-            return
-        pid = int(sel[0])
-        from gui.keyword_dialog import KeywordDialog
-        prods = {p['id']: p for p in get_coupang_products()}
-        KeywordDialog(self.root, product=prods[pid], platform='coupang',
-                      on_change=self.refresh_coupang_products)
+        from tkinter import messagebox
+        try:
+            sel = self.coupang_prod_tree.selection()
+            if not sel:
+                messagebox.showinfo("알림", "상품을 먼저 선택하세요.")
+                return
+            pid = int(sel[0])
+            from gui.keyword_dialog import KeywordDialog
+            prods = {p['id']: p for p in get_coupang_products()}
+            KeywordDialog(self.root, product=prods[pid], platform='coupang',
+                          on_change=self.refresh_coupang_products)
+        except Exception as e:
+            messagebox.showerror("오류", str(e))
 
     def _import_excel_naver(self):
         from gui.excel_import import ExcelImportDialog
@@ -922,55 +921,88 @@ class MainWindow:
         self._refresh_current_tab()
 
     def _print_current(self):
-        tab = self.nb.index(self.nb.select())
-        if tab == 0:
-            self._print_tree(self.naver_tree,   '네이버 현황',
-                             skip_cols={'link'},   date_start=4)
-        elif tab == 1:
-            self._print_tree(self.coupang_tree, '쿠팡 현황',
-                             skip_cols={'link'},   date_start=3)
-        else:
-            from tkinter import messagebox
-            messagebox.showinfo("인쇄", "네이버 현황 또는 쿠팡 현황 탭에서만 인쇄할 수 있습니다.")
+        from tkinter import messagebox
+        try:
+            tab = self.nb.index(self.nb.select())
+            if tab == 0:
+                self._print_tree(self.naver_tree,   '네이버 현황',
+                                 skip_cols={'link'},   date_start=4)
+            elif tab == 1:
+                self._print_tree(self.coupang_tree, '쿠팡 현황',
+                                 skip_cols={'link'},   date_start=3)
+            else:
+                messagebox.showinfo("인쇄", "네이버 현황 또는 쿠팡 현황 탭에서만 인쇄할 수 있습니다.")
+        except Exception as e:
+            messagebox.showerror("인쇄 오류", str(e))
 
     def _print_tree(self, tree, title: str, skip_cols: set, date_start: int):
-        import tempfile, os, webbrowser
+        import tempfile, webbrowser
         from datetime import datetime
+        from database.db_manager import get_all_brands
 
-        # 헤더 (skip_cols 제외, product·상품명 제외)
-        all_cols = tree['columns']
+        all_cols  = tree['columns']
         skip_cols = skip_cols | {'product'}
-        cols = [c for c in all_cols if c not in skip_cols]
-        headers = [tree.heading(c)['text'] for c in cols]
+        cols      = [c for c in all_cols if c not in skip_cols]
+        headers   = [tree.heading(c)['text'] for c in cols]
+        col_idx   = {c: i for i, c in enumerate(all_cols)}
 
-        col_idx = {c: i for i, c in enumerate(all_cols)}
+        # 브랜드 → 회사 매핑
+        brand_to_company = {b['brand_name']: b['company_name'] for b in get_all_brands()}
 
-        rows_html = []
+        # 트리 행을 회사별로 그룹화
+        company_filter = self.company_var.get()
+        from collections import OrderedDict
+        company_rows: dict = OrderedDict()
+
         for iid in tree.get_children():
             vals = tree.item(iid, 'values')
             tags = tree.item(iid, 'tags')
-            row_vals = [vals[col_idx[c]] for c in cols]
+            row_vals = [vals[col_idx[c]] if col_idx[c] < len(vals) else '' for c in cols]
 
             if 'total_row' in tags:
                 style = 'background:#ecf0f1;font-weight:bold;'
             elif 'rank_row' in tags:
                 style = 'background:#eaf4fb;'
-            elif 'sales_row' in tags:
-                style = 'background:#fffde7;font-weight:bold;'
-            elif 'option_row' in tags:
-                style = 'background:#fef9e7;'
             else:
                 style = ''
 
             cells = ''.join(f'<td>{v}</td>' for v in row_vals)
-            rows_html.append(f'<tr style="{style}">{cells}</tr>')
+            row_html = f'<tr style="{style}">{cells}</tr>'
 
-        company = self.company_var.get()
-        brand   = self.brand_var.get()
-        filter_txt = f"회사: {company} | 브랜드: {brand}"
+            # 회사명 추출 (brand 컬럼 값으로 역추적)
+            brand_val = vals[col_idx['brand']] if col_idx.get('brand', -1) < len(vals) else ''
+            company   = brand_to_company.get(brand_val, brand_val) if brand_val else '기타'
+            if 'total_row' in tags:
+                company = '__total__'
 
+            company_rows.setdefault(company, []).append(row_html)
+
+        now          = datetime.now().strftime('%Y-%m-%d %H:%M')
         header_cells = ''.join(f'<th>{h}</th>' for h in headers)
-        now = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+        # 회사별 섹션 생성
+        sections = []
+        is_first = True
+        for company, rows in company_rows.items():
+            if company == '__total__':
+                continue
+            page_break = '' if is_first else 'page-break-before:always;'
+            is_first   = False
+            sections.append(f"""
+<div style="{page_break}">
+  <h2>{title} — {company}</h2>
+  <div class="info">출력일시: {now}</div>
+  <table>
+    <thead><tr>{header_cells}</tr></thead>
+    <tbody>{''.join(rows)}</tbody>
+  </table>
+</div>""")
+
+        # 총합계 행은 마지막 섹션에 추가
+        total_rows = company_rows.get('__total__', [])
+        if total_rows and sections:
+            last = sections[-1]
+            sections[-1] = last.replace('</table>\n</div>', f"{''.join(total_rows)}</table>\n</div>")
 
         html = f"""<!DOCTYPE html>
 <html><head>
@@ -978,21 +1010,16 @@ class MainWindow:
 <title>{title}</title>
 <style>
   body {{ font-family: '맑은 고딕', Arial, sans-serif; font-size: 11px; margin: 12px; }}
-  h2 {{ margin-bottom: 4px; }}
+  h2 {{ margin-bottom: 4px; font-size: 14px; }}
   .info {{ color: #555; margin-bottom: 8px; }}
-  table {{ border-collapse: collapse; width: 100%; }}
+  table {{ border-collapse: collapse; width: 100%; margin-bottom: 12px; }}
   th {{ background: #2c3e50; color: white; padding: 5px 8px; text-align: center; }}
   td {{ border: 1px solid #ddd; padding: 4px 7px; text-align: center; white-space: nowrap; }}
   td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
   @media print {{ @page {{ size: landscape; margin: 10mm; }} }}
 </style>
 </head><body>
-<h2>{title}</h2>
-<div class="info">{filter_txt} &nbsp;|&nbsp; 출력일시: {now}</div>
-<table>
-<thead><tr>{header_cells}</tr></thead>
-<tbody>{''.join(rows_html)}</tbody>
-</table>
+{''.join(sections)}
 <script>window.onload = function(){{ window.print(); }}</script>
 </body></html>"""
 
@@ -1003,12 +1030,13 @@ class MainWindow:
         webbrowser.open(f'file:///{tmp.name}')
 
     def _run_check(self):
+        company = self.company_var.get()
         def _check():
             self.status_lbl.config(text="체크 중...")
             try:
                 import subprocess, sys
-                subprocess.run([sys.executable, 'checker.py', 'all'],
-                               cwd='D:\\순위판매현황', timeout=300)
+                cmd = [sys.executable, 'checker.py', 'all', company]
+                subprocess.run(cmd, cwd='D:\\순위판매현황', timeout=300)
                 self.root.after(0, self.refresh_naver)
                 self.root.after(0, lambda: self.status_lbl.config(text="체크 완료"))
             except Exception as e:

@@ -3,7 +3,7 @@
 순위 체크 + 판매 수집 실행기
 """
 
-from datetime import date
+from datetime import date, timedelta
 from database.db_manager import (
     get_all_brands, get_naver_products, get_coupang_products,
     get_keywords, save_rank, save_order,
@@ -13,10 +13,15 @@ from core.naver.sales_api import get_orders as naver_orders
 from core.coupang.sales_api import get_orders as coupang_orders
 
 
-def run_rank_check():
+def run_rank_check(company_filter='전체'):
     """네이버 전체 상품 × 전체 키워드 순위 체크"""
-    print(f"\n[순위 체크 시작] naver {date.today()}")
-    products = get_naver_products()
+    print(f"\n[순위 체크 시작] naver {date.today()} (회사={company_filter})")
+    all_products = get_naver_products()
+    if company_filter != '전체':
+        company_brand_ids = {b['id'] for b in get_all_brands() if b['company_name'] == company_filter}
+        products = [p for p in all_products if p.get('brand_id') in company_brand_ids]
+    else:
+        products = all_products
     today = date.today()
     checked = 0
 
@@ -50,10 +55,15 @@ def run_naver_sales():
     name_map = {p['product_name'].strip(): p for p in naver_prods}
     saved = skipped = 0
 
+    today     = date.today()
+    yesterday = today - timedelta(days=1)
+
     for brand in brands:
         if not brand['naver_client_id']:
             continue
-        orders = naver_orders(brand['naver_client_id'], brand['naver_client_secret'])
+        # 어제 기준(전전일 15:40~전일 15:40) + 오늘 기준(전일 15:40~당일 15:40)
+        orders = (naver_orders(brand['naver_client_id'], brand['naver_client_secret'], yesterday) +
+                  naver_orders(brand['naver_client_id'], brand['naver_client_secret'], today))
 
         for o in orders:
             matched = None
@@ -132,14 +142,16 @@ if __name__ == '__main__':
 
     mode = sys.argv[1] if len(sys.argv) > 1 else 'rank'
 
+    company = sys.argv[2] if len(sys.argv) > 2 else '전체'
+
     if mode == 'rank':
-        run_rank_check()
+        run_rank_check(company)
     elif mode == 'naver_sales':
         run_naver_sales()
     elif mode == 'coupang_sales':
         run_coupang_sales()
     elif mode == 'all':
-        run_rank_check()
+        run_rank_check(company)
         run_naver_sales()
         run_coupang_sales()
     else:

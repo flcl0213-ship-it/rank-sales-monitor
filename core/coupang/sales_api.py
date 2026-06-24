@@ -58,6 +58,8 @@ def get_orders(vendor_id: str, access_key: str, secret_key: str,
             headers=headers,
             timeout=30,
         )
+        if not resp.ok:
+            print(f"[ERROR] 쿠팡 응답: {resp.status_code} {resp.text[:300]}")
         resp.raise_for_status()
 
         raw = resp.json().get("data", {}).get("content", [])

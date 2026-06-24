@@ -105,14 +105,16 @@ class _AutoEntry(tk.Frame):
 
 
 class BulkKeywordDialog(tk.Toplevel):
-    def __init__(self, parent, on_done=None):
+    def __init__(self, parent, platform='naver', on_done=None):
         super().__init__(parent)
-        self.title("대표 키워드 일괄 등록")
+        self.platform = platform
+        label = '네이버' if platform == 'naver' else '쿠팡'
+        self.title(f"대표 키워드 일괄 등록 ({label})")
         self.geometry("800x560")
         self.resizable(True, True)
         self.grab_set()
         self.on_done = on_done
-        self._rows   = []   # (product_dict, main_AutoEntry, sub_AutoEntry)
+        self._rows   = []
 
         self._build()
         self._load()
@@ -168,7 +170,7 @@ class BulkKeywordDialog(tk.Toplevel):
                   relief=tk.FLAT, padx=12).pack(side=tk.LEFT)
 
     def _load(self):
-        from database.db_manager import get_naver_products, get_all_brands, get_keywords
+        from database.db_manager import get_naver_products, get_coupang_products, get_all_brands, get_keywords
 
         # 브랜드 필터 목록 갱신
         brands = get_all_brands()
@@ -182,13 +184,13 @@ class BulkKeywordDialog(tk.Toplevel):
             w.destroy()
         self._rows.clear()
 
-        products = get_naver_products()
+        products = get_naver_products() if self.platform == 'naver' else get_coupang_products()
         for i, p in enumerate(products):
             if f != '전체' and p['brand_name'] != f:
                 continue
 
             # 기존 main 키워드
-            existing = next((k['keyword'] for k in get_keywords(p['id'])
+            existing = next((k['keyword'] for k in get_keywords(p['id'], self.platform)
                              if k['type'] == 'main'), '')
 
             bg = '#ffffff' if i % 2 == 0 else '#f5f5f5'
@@ -231,23 +233,23 @@ class BulkKeywordDialog(tk.Toplevel):
             # 대표 키워드
             kw = ae_main.get()
             if kw:
-                existing_main = [k for k in get_keywords(pid) if k['type'] == 'main']
+                existing_main = [k for k in get_keywords(pid, self.platform) if k['type'] == 'main']
                 if existing_main and existing_main[0]['keyword'] == kw:
                     skipped += 1
                 elif kw:
                     for k in existing_main:
                         delete_keyword(k['id'])
-                    add_keyword(pid, kw, ktype='main', platform='naver')
+                    add_keyword(pid, kw, ktype='main', platform=self.platform)
                     saved_main += 1
 
             # 서브 키워드
             sub_text = sub_var.get().strip()
             if sub_text:
                 new_subs = [s.strip() for s in sub_text.split(',') if s.strip()]
-                existing_subs = {k['keyword'] for k in get_keywords(pid) if k['type'] == 'sub'}
+                existing_subs = {k['keyword'] for k in get_keywords(pid, self.platform) if k['type'] == 'sub'}
                 for s in new_subs:
                     if s not in existing_subs:
-                        add_keyword(pid, s, ktype='sub', platform='naver')
+                        add_keyword(pid, s, ktype='sub', platform=self.platform)
                         saved_sub += 1
 
         messagebox.showinfo("완료",
