@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 엑셀 일괄 등록 다이얼로그
-엑셀 형식: NO | 회사명 | 브랜드 | 모델명 | 상품명 | 링크 | 비고
+엑셀 형식: NO | 회사명 | 브랜드 | 모델명 | 상품명 | 링크 | 비고/상품ID
+  - 쿠팡: 7번째 열에 상품ID 입력 시 자동 등록
   - 네이버/쿠팡 각각 별도 파일
   - 회사명·브랜드·모델명은 그룹 첫 행에만 입력, 이후 행은 위 값 이어받음
 """
@@ -130,7 +131,9 @@ class ExcelImportDialog(tk.Toplevel):
 
         ws = wb.active
         for row in ws.iter_rows(min_row=4, values_only=True):
-            no, company, brand, model, product_name, link, *_ = list(row) + [None] * 7
+            cols = list(row) + [None] * 8
+            no, company, brand, model, product_name, link = cols[0], cols[1], cols[2], cols[3], cols[4], cols[5]
+            extra = cols[6]  # 쿠팡: 상품ID / 네이버: 비고
 
             # 헤더 행 스킵
             if str(no).strip().upper() == 'NO':
@@ -149,13 +152,21 @@ class ExcelImportDialog(tk.Toplevel):
 
             db_brand = mapping.get(cur_brand, cur_brand)
 
+            # 쿠팡 상품ID: 숫자형이면 상품ID, 아니면 비고
+            coupang_product_id = ''
+            if self.target == 'coupang' and extra is not None:
+                s = str(extra).strip().replace('.0', '')
+                if s.isdigit():
+                    coupang_product_id = s
+
             records.append({
-                'platform':     self.target,
-                'company_name': cur_company,
-                'brand_name':   db_brand,
-                'model_name':   cur_model,
-                'product_name': str(product_name).strip(),
-                'url':          str(link).strip(),
+                'platform':           self.target,
+                'company_name':       cur_company,
+                'brand_name':         db_brand,
+                'model_name':         cur_model,
+                'product_name':       str(product_name).strip(),
+                'url':                str(link).strip(),
+                'coupang_product_id': coupang_product_id,
             })
 
         return records
@@ -226,10 +237,11 @@ class ExcelImportDialog(tk.Toplevel):
                     skipped += 1
                     continue
                 add_coupang_product({
-                    'brand_id':     brand_id,
-                    'model_name':   r['model_name'],
-                    'product_name': r['product_name'],
-                    'url_coupang':  r['url'],
+                    'brand_id':           brand_id,
+                    'model_name':         r['model_name'],
+                    'product_name':       r['product_name'],
+                    'url_coupang':        r['url'],
+                    'coupang_product_id': r.get('coupang_product_id', ''),
                 })
                 existing_coupang.add(r['url'])
                 saved += 1

@@ -688,10 +688,10 @@ class MainWindow:
         tree_frame = tk.Frame(frame)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
-        cols = ('id', 'brand', 'model', 'product', 'url')
+        cols = ('id', 'brand', 'model', 'product', 'coupang_id', 'url')
         self.coupang_prod_tree = ttk.Treeview(tree_frame, columns=cols, show='headings', height=20)
-        headers = {'id':'ID', 'brand':'브랜드', 'model':'모델명', 'product':'상품명(옵션포함)', 'url':'쿠팡URL'}
-        widths  = {'id':40, 'brand':80, 'model':100, 'product':350, 'url':250}
+        headers = {'id':'ID', 'brand':'브랜드', 'model':'모델명', 'product':'상품명(옵션포함)', 'coupang_id':'쿠팡상품ID', 'url':'쿠팡URL'}
+        widths  = {'id':40, 'brand':80, 'model':100, 'product':320, 'coupang_id':100, 'url':220}
         for col in cols:
             self.coupang_prod_tree.heading(col, text=headers[col])
             self.coupang_prod_tree.column(col, width=widths[col])
@@ -725,6 +725,7 @@ class MainWindow:
             url = p['url_coupang']
             tree.insert('', tk.END, iid=str(p['id']), values=(
                 p['id'], p['brand_name'], p.get('model_name', ''), p['product_name'],
+                p.get('coupang_product_id', ''),
                 url[:50] + '...' if len(url) > 50 else url,
             ))
 
