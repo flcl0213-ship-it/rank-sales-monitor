@@ -1056,5 +1056,5 @@ class MainWindow:
                 self.root.after(0, self.refresh_naver)
                 self.root.after(0, lambda: self.status_lbl.config(text="체크 완료"))
             except Exception as e:
-                self.root.after(0, lambda: self.status_lbl.config(text=f"오류: {e}"))
+                self.root.after(0, lambda e=e: self.status_lbl.config(text=f"오류: {e}"))
         threading.Thread(target=_check, daemon=True).start()
