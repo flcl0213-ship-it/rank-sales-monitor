@@ -54,9 +54,8 @@ class KeywordDialog(tk.Toplevel):
         btn_frame.pack(pady=6)
         tk.Button(btn_frame, text="선택 삭제", command=self._delete,
                   bg='#c0392b', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
-        if platform == 'naver':
-            tk.Button(btn_frame, text="키워드 추천 받기", command=self._suggest,
-                      bg='#8e44ad', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(btn_frame, text="키워드 추천 받기", command=self._suggest,
+                  bg='#8e44ad', fg='white', relief=tk.FLAT, padx=8).pack(side=tk.LEFT, padx=4)
         self._reload()
 
     def _reload(self):
