@@ -1052,7 +1052,7 @@ class MainWindow:
             try:
                 import subprocess, sys
                 cmd = [sys.executable, 'checker.py', 'all', company]
-                subprocess.run(cmd, cwd='D:\\순위판매현황', timeout=300)
+                subprocess.run(cmd, cwd='D:\\순위판매현황', timeout=1800)
                 self.root.after(0, self.refresh_naver)
                 self.root.after(0, lambda: self.status_lbl.config(text="체크 완료"))
             except Exception as e:
