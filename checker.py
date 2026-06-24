@@ -195,6 +195,6 @@ if __name__ == '__main__':
         run_rank_check(company)
         run_coupang_rank_check(company)
         run_naver_sales()
-        run_coupang_sales()
+        # run_coupang_sales()  # 쿠팡 Wing API IP 제한으로 비활성화
     else:
         print("사용법: python checker.py [rank|naver_rank|coupang_rank|naver_sales|coupang_sales|all]")
