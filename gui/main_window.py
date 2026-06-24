@@ -366,56 +366,186 @@ class MainWindow:
     def _build_sub_tab(self):
         frame = self.tab_sub
         today = date.today()
-        col_dates = [(today - timedelta(days=i)).strftime('%m/%d').lstrip('0') for i in range(DAYS)]
+        self.sub_date_cols = [
+            (today - timedelta(days=i)).strftime('%m/%d').lstrip('0')
+            for i in range(DAYS)
+        ]
+        self._sub_checked   = set()   # 체크된 keyword_id
+        self._sub_prod_map  = {}      # label → product dict
 
-        cols = ('brand', 'model', 'product', 'keyword') + tuple(col_dates)
-        self.sub_tree = ttk.Treeview(frame, columns=cols, show='headings', height=25)
+        # 상단: 상품 선택
+        top = tk.Frame(frame, pady=6)
+        top.pack(fill=tk.X, padx=8)
+        tk.Label(top, text="상품 선택:", font=('맑은 고딕', 9)).pack(side=tk.LEFT)
+        self.sub_prod_var = tk.StringVar()
+        self.sub_prod_cb  = ttk.Combobox(top, textvariable=self.sub_prod_var,
+                                          width=55, state='readonly')
+        self.sub_prod_cb.pack(side=tk.LEFT, padx=6)
+        self.sub_prod_cb.bind('<<ComboboxSelected>>', lambda e: self.refresh_sub())
+        tk.Label(top, text="※ 서브 키워드 행 클릭으로 비교 선택 (최대 4개)",
+                 fg='#888', font=('맑은 고딕', 8)).pack(side=tk.LEFT)
 
-        self.sub_tree.heading('brand',   text='브랜드')
-        self.sub_tree.heading('model',   text='모델명')
-        self.sub_tree.heading('product', text='상품명')
-        self.sub_tree.heading('keyword', text='서브 키워드')
-        self.sub_tree.column('brand',   width=70)
-        self.sub_tree.column('model',   width=80)
-        self.sub_tree.column('product', width=150)
-        self.sub_tree.column('keyword', width=160)
-        for d in col_dates:
+        # 분석 메시지
+        self.sub_analysis = tk.Label(frame, text="", fg='#2c3e50',
+                                      font=('맑은 고딕', 9, 'bold'), anchor='w',
+                                      bg='#eaf4fb', pady=4)
+        self.sub_analysis.pack(fill=tk.X, padx=8)
+
+        # 테이블
+        cols = ('check', 'type', 'keyword') + tuple(self.sub_date_cols) + ('avg',)
+        self.sub_tree = ttk.Treeview(frame, columns=cols, show='headings', height=20)
+
+        self.sub_tree.heading('check',   text='비교')
+        self.sub_tree.heading('type',    text='구분')
+        self.sub_tree.heading('keyword', text='키워드')
+        self.sub_tree.heading('avg',     text='평균순위')
+        self.sub_tree.column('check',   width=45,  anchor=tk.CENTER)
+        self.sub_tree.column('type',    width=55,  anchor=tk.CENTER)
+        self.sub_tree.column('keyword', width=220, anchor=tk.W)
+        self.sub_tree.column('avg',     width=70,  anchor=tk.CENTER)
+        for d in self.sub_date_cols:
             self.sub_tree.heading(d, text=d)
-            self.sub_tree.column(d, width=55, anchor=tk.CENTER)
+            self.sub_tree.column(d, width=52, anchor=tk.CENTER)
+
+        self.sub_tree.tag_configure('main_kw',    background='#d6eaf8', font=('맑은 고딕', 9, 'bold'))
+        self.sub_tree.tag_configure('checked_kw', background='#d5f5e3')
+        self.sub_tree.tag_configure('sub_kw',     background='#ffffff')
 
         sb = ttk.Scrollbar(frame, orient=tk.VERTICAL,   command=self.sub_tree.yview)
         sx = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.sub_tree.xview)
         self.sub_tree.configure(yscrollcommand=sb.set, xscrollcommand=sx.set)
-        self.sub_tree.grid(row=0, column=0, sticky='nsew')
-        sb.grid(row=0, column=1, sticky='ns')
-        sx.grid(row=1, column=0, sticky='ew')
-        frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(0, weight=1)
+        self.sub_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0), pady=4)
+        sb.pack(side=tk.RIGHT, fill=tk.Y, pady=4)
+
+        self.sub_tree.bind('<Button-1>', self._on_sub_click)
+
+    def _reload_sub_products(self):
+        """서브키워드 탭 상품 목록 갱신"""
+        prods = get_naver_products()
+        self._sub_prod_map = {}
+        for p in prods:
+            label = f"{p['brand_name']}  |  {p.get('model_name','')[:12]}  |  {p['product_name'][:30]}"
+            self._sub_prod_map[label] = p
+        self.sub_prod_cb['values'] = list(self._sub_prod_map.keys())
+        if self.sub_prod_var.get() not in self._sub_prod_map:
+            first = next(iter(self._sub_prod_map), '')
+            self.sub_prod_var.set(first)
+
+    def _on_sub_click(self, event):
+        region = self.sub_tree.identify_region(event.x, event.y)
+        if region != 'cell':
+            return
+        iid = self.sub_tree.identify_row(event.y)
+        if not iid or iid.startswith('main_'):
+            return
+        kid = int(iid)
+        if kid in self._sub_checked:
+            self._sub_checked.discard(kid)
+        else:
+            if len(self._sub_checked) >= 4:
+                from tkinter import messagebox
+                messagebox.showinfo("알림", "최대 4개까지 선택할 수 있습니다.", parent=self.root)
+                return
+            self._sub_checked.add(kid)
+        self._redraw_sub()
+
+    def _redraw_sub(self):
+        """체크 상태 반영해서 트리 색상 갱신 + 분석"""
+        for iid in self.sub_tree.get_children():
+            if iid.startswith('main_'):
+                continue
+            kid = int(iid)
+            tag = 'checked_kw' if kid in self._sub_checked else 'sub_kw'
+            self.sub_tree.item(iid, tags=(tag,))
+            check_txt = '✓' if kid in self._sub_checked else ''
+            vals = list(self.sub_tree.item(iid, 'values'))
+            vals[0] = check_txt
+            self.sub_tree.item(iid, values=vals)
+        self._update_sub_analysis()
+
+    def _update_sub_analysis(self):
+        """대표 vs 선택 서브키워드 분석 메시지"""
+        if not hasattr(self, '_sub_rank_data'):
+            self.sub_analysis.config(text="")
+            return
+        lines = []
+        for kw_label, avgs in self._sub_rank_data.items():
+            valid = [v for v in avgs if v > 0]
+            avg   = sum(valid) / len(valid) if valid else None
+            lines.append((kw_label, avg))
+
+        if not lines:
+            self.sub_analysis.config(text="")
+            return
+
+        main_line = lines[0] if lines else None
+        checked_lines = [(lbl, avg) for lbl, avg in lines[1:]
+                         if avg is not None]
+
+        msg_parts = []
+        if main_line and main_line[1]:
+            msg_parts.append(f"대표: 평균 {main_line[1]:.1f}위")
+        for lbl, avg in checked_lines:
+            diff = ""
+            if main_line and main_line[1] and avg:
+                d = main_line[1] - avg
+                diff = f" (대표 대비 {'▲' if d > 0 else '▼'}{abs(d):.1f})"
+            msg_parts.append(f"{lbl[:15]}: 평균 {avg:.1f}위{diff}" if avg else f"{lbl[:15]}: 데이터 없음")
+
+        self.sub_analysis.config(text="  " + "   |   ".join(msg_parts) if msg_parts else "")
 
     def refresh_sub(self):
         tree = self.sub_tree
         tree.delete(*tree.get_children())
+        self._sub_rank_data = {}
 
-        brand_filter = self.brand_var.get()
+        label = self.sub_prod_var.get()
+        prod  = self._sub_prod_map.get(label)
+        if not prod:
+            return
+
+        pid       = prod['id']
         today     = date.today()
         date_strs = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
-        rows      = get_sub_ranks_for_display(DAYS)
 
-        data: dict = defaultdict(dict)
-        meta: dict = {}
+        # 키워드 목록 (main + sub)
+        all_kws = get_keywords(pid)
+        main_kws = [k for k in all_kws if k['type'] == 'main']
+        sub_kws  = [k for k in all_kws if k['type'] == 'sub']
+
+        # 순위 데이터
+        from database.db_manager import get_conn
+        conn = get_conn()
+        rows = conn.execute("""
+            SELECT keyword_id, rank, checked_date FROM rank_history
+            WHERE naver_product_id=? AND checked_date >= date('now', ? || ' days')
+            ORDER BY checked_date DESC
+        """, (pid, f'-{DAYS}')).fetchall()
+        conn.close()
+
+        rank_map = defaultdict(dict)
         for r in rows:
-            key = (r['product_id'], r['keyword_id'])
-            meta[key] = r
-            if r['checked_date']:
-                data[key][r['checked_date']] = r['rank']
+            rank_map[r['keyword_id']][r['checked_date']] = r['rank']
 
-        for key, r in meta.items():
-            if brand_filter != '전체' and r['brand_name'] != brand_filter:
-                continue
-            vals = [str(data[key].get(ds)) if data[key].get(ds) else '-' for ds in date_strs]
-            tree.insert('', tk.END,
-                        values=(r['brand_name'], r.get('model_name', ''),
-                                r['product_name'], r['keyword']) + tuple(vals))
+        def _insert_row(kw, tag, iid_prefix):
+            kid    = kw['id']
+            ranks  = [rank_map[kid].get(ds, 0) for ds in date_strs]
+            valid  = [r for r in ranks if r > 0]
+            avg    = f"{sum(valid)/len(valid):.1f}" if valid else "-"
+            vals   = [str(r) if r > 0 else '-' for r in ranks]
+            check  = '★' if tag == 'main_kw' else ''
+            iid    = f'{iid_prefix}_{kid}' if tag == 'main_kw' else str(kid)
+            tree.insert('', tk.END, iid=iid, tags=(tag,),
+                        values=(check, '대표' if tag == 'main_kw' else '서브',
+                                kw['keyword']) + tuple(vals) + (avg,))
+            self._sub_rank_data[kw['keyword']] = ranks
+
+        for kw in main_kws:
+            _insert_row(kw, 'main_kw', 'main')
+        for kw in sub_kws:
+            _insert_row(kw, 'checked_kw' if kw['id'] in self._sub_checked else 'sub_kw', 'sub')
+
+        self._update_sub_analysis()
 
     # ─── 브랜드 관리 탭 ──────────────────────────────
     def _build_brand_tab(self):
@@ -693,6 +823,7 @@ class MainWindow:
         elif tab == 1:
             self.refresh_coupang()
         elif tab == 2:
+            self._reload_sub_products()
             self.refresh_sub()
         elif tab == 3:
             self.refresh_brands()
@@ -704,6 +835,7 @@ class MainWindow:
         elif tab == 1:
             self.refresh_coupang()
         elif tab == 2:
+            self._reload_sub_products()
             self.refresh_sub()
 
     def _on_naver_link_click(self, event):
