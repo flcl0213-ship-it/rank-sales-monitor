@@ -10,6 +10,7 @@ from database.db_manager import (
 )
 from core.naver.rank_api import find_rank as naver_rank
 from core.naver.sales_api import get_orders as naver_orders
+from core.coupang.rank_api import find_rank as coupang_rank
 from core.coupang.sales_api import get_orders as coupang_orders
 
 
@@ -35,16 +36,51 @@ def run_rank_check(company_filter='전체'):
                 url_naver=p.get('url_naver', ''),
             )
             save_rank(
-                naver_product_id=p['id'],
                 keyword_id=kw['id'],
                 keyword_type=kw['type'],
                 rank=rank,
                 checked_date=today,
+                naver_product_id=p['id'],
             )
             print(f"  [{kw['type']}] {p['product_name']} / '{kw['keyword']}' → {rank}위")
             checked += 1
 
     print(f"[순위 체크 완료] {checked}건")
+
+
+def run_coupang_rank_check(company_filter='전체'):
+    """쿠팡 전체 상품 × 대표 키워드 순위 체크 (스크래핑)"""
+    print(f"\n[쿠팡 순위 체크 시작] {date.today()} (회사={company_filter})")
+    all_products = get_coupang_products()
+    if company_filter != '전체':
+        company_brand_ids = {b['id'] for b in get_all_brands() if b['company_name'] == company_filter}
+        products = [p for p in all_products if p.get('brand_id') in company_brand_ids]
+    else:
+        products = all_products
+
+    today   = date.today()
+    checked = 0
+
+    for p in products:
+        if not p.get('coupang_product_id'):
+            continue
+        keywords = get_keywords(p['id'], platform='coupang')
+        for kw in keywords:
+            rank = coupang_rank(
+                keyword=kw['keyword'],
+                coupang_product_id=p['coupang_product_id'],
+            )
+            save_rank(
+                keyword_id=kw['id'],
+                keyword_type=kw['type'],
+                rank=rank,
+                checked_date=today,
+                coupang_product_id=p['id'],
+            )
+            print(f"  [{kw['type']}] {p['product_name'][:30]} / '{kw['keyword']}' → {rank}위")
+            checked += 1
+
+    print(f"[쿠팡 순위 체크 완료] {checked}건")
 
 
 def run_naver_sales():
@@ -146,13 +182,19 @@ if __name__ == '__main__':
 
     if mode == 'rank':
         run_rank_check(company)
+        run_coupang_rank_check(company)
+    elif mode == 'naver_rank':
+        run_rank_check(company)
+    elif mode == 'coupang_rank':
+        run_coupang_rank_check(company)
     elif mode == 'naver_sales':
         run_naver_sales()
     elif mode == 'coupang_sales':
         run_coupang_sales()
     elif mode == 'all':
         run_rank_check(company)
+        run_coupang_rank_check(company)
         run_naver_sales()
         run_coupang_sales()
     else:
-        print("사용법: python checker.py [rank|naver_sales|coupang_sales|all]")
+        print("사용법: python checker.py [rank|naver_rank|coupang_rank|naver_sales|coupang_sales|all]")

@@ -243,16 +243,24 @@ def delete_keyword(keyword_id: int):
 # 순위 저장 / 조회
 # ════════════════════════════════
 
-def save_rank(naver_product_id: int, keyword_id: int, keyword_type: str,
-              rank: int, checked_date: date = None):
+def save_rank(keyword_id: int, keyword_type: str, rank: int,
+              checked_date: date = None,
+              naver_product_id: int = None, coupang_product_id: int = None):
     if checked_date is None:
         checked_date = date.today()
     conn = get_conn()
-    conn.execute("""
-        INSERT OR REPLACE INTO rank_history
-        (naver_product_id, keyword_id, keyword_type, rank, checked_date)
-        VALUES (?, ?, ?, ?, ?)
-    """, (naver_product_id, keyword_id, keyword_type, rank, str(checked_date)))
+    if coupang_product_id is not None:
+        conn.execute("""
+            INSERT OR REPLACE INTO rank_history
+            (coupang_product_id, keyword_id, keyword_type, rank, checked_date)
+            VALUES (?, ?, ?, ?, ?)
+        """, (coupang_product_id, keyword_id, keyword_type, rank, str(checked_date)))
+    else:
+        conn.execute("""
+            INSERT OR REPLACE INTO rank_history
+            (naver_product_id, keyword_id, keyword_type, rank, checked_date)
+            VALUES (?, ?, ?, ?, ?)
+        """, (naver_product_id, keyword_id, keyword_type, rank, str(checked_date)))
     conn.commit()
     conn.close()
 
@@ -296,6 +304,28 @@ def get_sub_ranks_for_display(days: int = 7) -> List[Dict]:
         WHERE np.status='active' AND b.status='active'
         ORDER BY b.id, np.id, k.sort_order, rh.checked_date DESC
     """, (f'-{days}',)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_coupang_ranks_for_display(days: int = 7) -> List[Dict]:
+    """쿠팡 현황 탭: 대표 키워드 순위 7일치"""
+    conn = get_conn()
+    rows = conn.execute(f"""
+        SELECT
+            cp.id as product_id, cp.model_name, cp.product_name,
+            cp.url_coupang, cp.coupang_product_id,
+            b.company_name, b.brand_name,
+            k.id as keyword_id, k.keyword, k.type as keyword_type,
+            rh.rank, rh.checked_date
+        FROM coupang_products cp
+        JOIN brands b ON cp.brand_id = b.id
+        JOIN keywords k ON k.coupang_product_id = cp.id AND k.type='main' AND k.status='active'
+        LEFT JOIN rank_history rh ON rh.coupang_product_id = cp.id AND rh.keyword_id = k.id
+            AND rh.checked_date >= date('now', '-{days} days')
+        WHERE cp.status='active' AND b.status='active'
+        ORDER BY b.id, cp.id, rh.checked_date DESC
+    """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

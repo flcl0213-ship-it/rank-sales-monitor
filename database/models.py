@@ -78,18 +78,27 @@ def init_db():
         status              TEXT DEFAULT 'active'
     )""")
 
-    # 순위 기록 (네이버 상품에만)
+    # 순위 기록 (네이버 + 쿠팡 공통) — 기존 테이블이면 _migrate_rank_history가 컬럼 추가
     c.execute("""
     CREATE TABLE IF NOT EXISTS rank_history (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        naver_product_id INTEGER NOT NULL REFERENCES naver_products(id),
-        keyword_id       INTEGER NOT NULL REFERENCES keywords(id),
-        keyword_type     TEXT DEFAULT 'sub',
-        rank             INTEGER DEFAULT 0,
-        checked_date     DATE NOT NULL,
-        checked_at       DATETIME DEFAULT (datetime('now','localtime')),
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        naver_product_id    INTEGER REFERENCES naver_products(id),
+        coupang_product_id  INTEGER REFERENCES coupang_products(id),
+        keyword_id          INTEGER NOT NULL REFERENCES keywords(id),
+        keyword_type        TEXT DEFAULT 'sub',
+        rank                INTEGER DEFAULT 0,
+        checked_date        DATE NOT NULL,
+        checked_at          DATETIME DEFAULT (datetime('now','localtime')),
         UNIQUE(naver_product_id, keyword_id, checked_date)
     )""")
+    conn.commit()
+
+    _migrate_rank_history(conn)  # 기존 DB: coupang_product_id 컬럼 + 인덱스 추가
+
+    c.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_rank_coupang
+    ON rank_history(coupang_product_id, keyword_id, checked_date)
+    WHERE coupang_product_id IS NOT NULL""")
     c.execute("""
     CREATE INDEX IF NOT EXISTS idx_rank_product_date
     ON rank_history(naver_product_id, checked_date)""")
@@ -117,6 +126,44 @@ def init_db():
     conn.commit()
     conn.close()
     print(f"DB 초기화 완료: {DB_PATH}")
+
+
+def _migrate_rank_history(conn):
+    """기존 rank_history에 coupang_product_id 컬럼 추가 (마이그레이션)"""
+    cols = {c[1] for c in conn.execute('PRAGMA table_info(rank_history)').fetchall()}
+    if 'coupang_product_id' in cols:
+        return
+
+    conn.executescript("""
+        ALTER TABLE rank_history RENAME TO _rank_history_old;
+
+        CREATE TABLE rank_history (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            naver_product_id    INTEGER REFERENCES naver_products(id),
+            coupang_product_id  INTEGER REFERENCES coupang_products(id),
+            keyword_id          INTEGER NOT NULL REFERENCES keywords(id),
+            keyword_type        TEXT DEFAULT 'sub',
+            rank                INTEGER DEFAULT 0,
+            checked_date        DATE NOT NULL,
+            checked_at          DATETIME DEFAULT (datetime('now','localtime')),
+            UNIQUE(naver_product_id, keyword_id, checked_date)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rank_coupang
+        ON rank_history(coupang_product_id, keyword_id, checked_date)
+        WHERE coupang_product_id IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_rank_product_date
+        ON rank_history(naver_product_id, checked_date);
+
+        INSERT INTO rank_history
+            (id, naver_product_id, keyword_id, keyword_type, rank, checked_date, checked_at)
+        SELECT id, naver_product_id, keyword_id, keyword_type, rank, checked_date, checked_at
+        FROM _rank_history_old;
+
+        DROP TABLE _rank_history_old;
+    """)
+    print("DB 마이그레이션 완료: rank_history + coupang_product_id")
 
 
 if __name__ == '__main__':

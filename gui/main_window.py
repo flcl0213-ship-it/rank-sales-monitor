@@ -19,6 +19,7 @@ from database.db_manager import (
     get_naver_products, get_coupang_products,
     get_keywords,
     get_naver_ranks_for_display, get_sub_ranks_for_display,
+    get_coupang_ranks_for_display,
     get_naver_daily_sales, get_coupang_daily_sales,
 )
 from gui.brand_dialog import BrandDialog
@@ -268,28 +269,33 @@ class MainWindow:
             for i in range(DAYS)
         ]
 
-        cols = ('brand', 'model', 'product', 'link') + tuple(self.coupang_date_cols) + ('summary',)
+        cols = ('brand', 'model', 'product', 'keyword', 'link') + tuple(self.coupang_date_cols) + ('summary',)
         self.coupang_tree = ttk.Treeview(frame, columns=cols, show='headings', height=25)
 
-        col_widths = {'brand': 70, 'model': 80, 'product': 300, 'link': 40, 'summary': 80}
+        col_widths = {'brand': 70, 'model': 80, 'product': 200, 'keyword': 130, 'link': 40, 'summary': 70}
         self.coupang_tree.heading('brand',   text='브랜드')
         self.coupang_tree.heading('model',   text='모델명')
-        self.coupang_tree.heading('product', text='상품명 (옵션포함)')
+        self.coupang_tree.heading('product', text='상품명')
+        self.coupang_tree.heading('keyword', text='대표키워드')
         self.coupang_tree.heading('link',    text='링크')
-        self.coupang_tree.heading('summary', text='7일합계')
+        self.coupang_tree.heading('summary', text='순위평균')
 
         for col in cols:
-            w = col_widths.get(col, 60)
-            self.coupang_tree.column(col, width=w, minwidth=40, anchor=tk.CENTER)
+            w = col_widths.get(col, 55)
+            self.coupang_tree.column(col, width=w, minwidth=30, anchor=tk.CENTER)
         self.coupang_tree.column('brand',   anchor=tk.W)
         self.coupang_tree.column('model',   anchor=tk.W)
         self.coupang_tree.column('product', anchor=tk.W)
+        self.coupang_tree.column('keyword', anchor=tk.W)
 
         for d in self.coupang_date_cols:
             self.coupang_tree.heading(d, text=d)
 
+        self.coupang_tree.tag_configure('rank_row',  background='#fef9e7')
         self.coupang_tree.tag_configure('total_row', background='#ecf0f1',
                                         font=('맑은 고딕', 9, 'bold'))
+        self.coupang_tree.tag_configure('up',   foreground='#c0392b')
+        self.coupang_tree.tag_configure('down', foreground='#2980b9')
 
         sb = ttk.Scrollbar(frame, orient=tk.VERTICAL,   command=self.coupang_tree.yview)
         sx = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.coupang_tree.xview)
@@ -311,47 +317,56 @@ class MainWindow:
         today          = date.today()
         date_strs      = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
 
-        sales_rows   = get_coupang_daily_sales(DAYS)
-        brand_company = {b['brand_name']: b['company_name'] for b in get_all_brands()}
-        prods_list   = get_coupang_products()
-        for p in prods_list:
-            p['company_name'] = brand_company.get(p['brand_name'], '')
-        prods = {p['id']: p for p in prods_list}
+        rank_rows = get_coupang_ranks_for_display(DAYS)
 
-        sales_data: dict = defaultdict(dict)  # pid → date → qty
-        for s in sales_rows:
-            sales_data[s['product_id']][s['order_date']] = s['total_qty']
-
-        day_totals = defaultdict(int)
-
-        def _match_cp(p):
-            if company_filter != '전체' and p.get('company_name', '') != company_filter:
+        def _match(row):
+            if company_filter != '전체' and row.get('company_name') != company_filter:
                 return False
-            if brand_filter != '전체' and p['brand_name'] != brand_filter:
+            if brand_filter != '전체' and row['brand_name'] != brand_filter:
                 return False
             return True
 
-        for pid, p in prods.items():
-            if not _match_cp(p):
+        # (pid, kid) → date → rank
+        rank_data: dict = defaultdict(dict)
+        product_info: dict = {}
+        for r in rank_rows:
+            if not _match(r):
                 continue
-            url = p.get('url_coupang', '')
-            vals = []
-            week_total = 0
+            key = (r['product_id'], r['keyword_id'])
+            if r.get('checked_date') and r.get('rank') is not None:
+                rank_data[key][r['checked_date']] = r['rank']
+            if key not in product_info:
+                product_info[key] = r
+
+        iid_row = 0
+        for key, info in product_info.items():
+            pid  = info['product_id']
+            url  = info.get('url_coupang', '')
+            kw   = info.get('keyword', '')
+
+            rank_vals = []
+            valid_ranks = []
             for ds in date_strs:
-                qty = sales_data.get(pid, {}).get(ds, 0)
-                vals.append(str(qty) if qty else '0')
-                week_total += qty
-                day_totals[ds] += qty
+                r = rank_data[key].get(ds)
+                if r:
+                    rank_vals.append(str(r))
+                    valid_ranks.append(r)
+                else:
+                    rank_vals.append('-')
+
+            avg = f'{sum(valid_ranks)/len(valid_ranks):.1f}위' if valid_ranks else '-'
 
             tree.insert('', tk.END,
-                        values=(p['brand_name'], p.get('model_name', ''),
-                                p['product_name'], '🔗' if url else '') + tuple(vals) + (f'{week_total}개',),
-                        iid=f'cp_{pid}')
+                        values=(info['brand_name'], info.get('model_name', ''),
+                                info['product_name'], kw,
+                                '🔗' if url else '') + tuple(rank_vals) + (avg,),
+                        tags=('rank_row',), iid=f'cpr_{iid_row}_{pid}')
+            iid_row += 1
 
-        total_vals = ('', '', '', '합계') + tuple(
-            str(day_totals.get(ds, 0)) for ds in date_strs
-        ) + (f"{sum(day_totals.values())}개",)
-        tree.insert('', tk.END, values=total_vals, tags=('total_row',))
+        cnt = len(product_info)
+        if cnt == 0:
+            tree.insert('', tk.END, values=('쿠팡 대표 키워드를 등록하면 순위가 표시됩니다.', '', '', '', '') + ('-',) * DAYS + ('-',))
+        self.status_lbl.config(text=f"갱신: {date.today()} | 쿠팡 {cnt}개 키워드")
 
     # ─── 서브 키워드 탭 ──────────────────────────────
     def _build_sub_tab(self):
