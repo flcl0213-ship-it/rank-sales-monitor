@@ -66,7 +66,7 @@ def run_coupang_rank_check(company_filter='전체'):
     for p in products:
         if not p.get('coupang_product_id'):
             continue
-        keywords = get_keywords(p['id'], platform='coupang')
+        keywords = [k for k in get_keywords(p['id'], platform='coupang') if k['type'] == 'main']
         for kw in keywords:
             rank = coupang_rank(
                 keyword=kw['keyword'],
