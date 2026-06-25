@@ -116,8 +116,8 @@ def update_naver_product(product_id: int, data: Dict):
     conn = get_conn()
     conn.execute("""
         UPDATE naver_products SET
-            model_name=:model_name, product_name=:product_name,
-            seller=:seller, url_naver=:url_naver, naver_product_id=:naver_product_id
+            brand_id=:brand_id, model_name=:model_name, product_name=:product_name,
+            url_naver=:url_naver, naver_product_id=:naver_product_id
         WHERE id=:id
     """, {**data, 'id': product_id})
     conn.commit()
@@ -395,3 +395,50 @@ def get_coupang_daily_sales(days: int = 7, brand_filter: str = '전체') -> List
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ════════════════════════════════
+# 트래픽현황
+# ════════════════════════════════
+
+def get_traffic_columns() -> List[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT col_name FROM traffic_columns ORDER BY col_index"
+    ).fetchall()
+    conn.close()
+    return [r['col_name'] for r in rows]
+
+
+def update_traffic_column(col_index: int, name: str):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE traffic_columns SET col_name=? WHERE col_index=?",
+        (name, col_index)
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_traffic_data(naver_product_id: int, col_index: int, value: str):
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO traffic_data (naver_product_id, col_index, value)
+        VALUES (?, ?, ?)
+        ON CONFLICT(naver_product_id, col_index) DO UPDATE SET value=excluded.value
+    """, (naver_product_id, col_index, value))
+    conn.commit()
+    conn.close()
+
+
+def get_all_traffic_data() -> dict:
+    """전체 트래픽 데이터 {product_id: {col_index: value}}"""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT naver_product_id, col_index, value FROM traffic_data"
+    ).fetchall()
+    conn.close()
+    result = {}
+    for r in rows:
+        result.setdefault(r['naver_product_id'], {})[r['col_index']] = r['value']
+    return result

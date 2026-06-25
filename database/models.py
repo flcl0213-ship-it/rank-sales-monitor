@@ -123,6 +123,24 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_orders_date
     ON orders(order_date, platform)""")
 
+    # 트래픽현황 컬럼명 (사용자 정의 4개)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS traffic_columns (
+        col_index INTEGER PRIMARY KEY,
+        col_name  TEXT DEFAULT ''
+    )""")
+    for i in range(4):
+        c.execute("INSERT OR IGNORE INTO traffic_columns VALUES (?, '')", (i,))
+
+    # 트래픽현황 데이터 (상품별 × 컬럼별)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS traffic_data (
+        naver_product_id INTEGER NOT NULL REFERENCES naver_products(id),
+        col_index        INTEGER NOT NULL,
+        value            TEXT DEFAULT '',
+        PRIMARY KEY (naver_product_id, col_index)
+    )""")
+
     conn.commit()
     conn.close()
     print(f"DB 초기화 완료: {DB_PATH}")

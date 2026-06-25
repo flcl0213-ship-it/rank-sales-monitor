@@ -21,6 +21,8 @@ from database.db_manager import (
     get_naver_ranks_for_display, get_sub_ranks_for_display,
     get_coupang_ranks_for_display,
     get_naver_daily_sales, get_coupang_daily_sales,
+    get_traffic_columns, update_traffic_column,
+    save_traffic_data, get_all_traffic_data,
 )
 from gui.brand_dialog import BrandDialog
 from gui.product_dialog import NaverProductDialog, CoupangProductDialog
@@ -100,12 +102,16 @@ class MainWindow:
             for i in range(DAYS)
         ]
 
-        cols = ('brand', 'model', 'product', 'link') + tuple(self.naver_date_cols) + ('summary', 'sales', 'compare')
+        self.traffic_col_names = get_traffic_columns()  # ['','','','']
+        traffic_ids = ('traffic_0', 'traffic_1', 'traffic_2', 'traffic_3')
+
+        cols = ('brand', 'model', 'product', 'link') + tuple(self.naver_date_cols) + ('summary', 'sales', 'compare') + traffic_ids
         self.naver_tree = ttk.Treeview(frame, columns=cols, show='headings', height=25)
 
         col_widths = {
             'brand': 70, 'model': 80, 'product': 160,
             'link': 40, 'summary': 90, 'sales': 100, 'compare': 55,
+            'traffic_0': 70, 'traffic_1': 70, 'traffic_2': 70, 'traffic_3': 70,
         }
         self.naver_tree.heading('brand',   text='브랜드')
         self.naver_tree.heading('model',   text='모델명')
@@ -114,6 +120,11 @@ class MainWindow:
         self.naver_tree.heading('summary', text='순위평균')
         self.naver_tree.heading('sales',   text='판매/전일대비')
         self.naver_tree.heading('compare', text='키워드비교')
+
+        for i, tid in enumerate(traffic_ids):
+            name = self.traffic_col_names[i] or f'트래픽{i+1}'
+            self.naver_tree.heading(tid, text=name,
+                                    command=lambda idx=i: self._rename_traffic_col(idx))
 
         for col in cols:
             w = col_widths.get(col, 60)
@@ -140,8 +151,9 @@ class MainWindow:
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 
-        self.naver_tree.bind('<Button-1>', self._on_naver_click)
-        self.naver_tree.bind('<Motion>',   self._on_naver_motion)
+        self.naver_tree.bind('<Button-1>',   self._on_naver_click)
+        self.naver_tree.bind('<Motion>',     self._on_naver_motion)
+        self.naver_tree.bind('<Double-1>',   self._on_traffic_double_click)
         self.naver_tree.tag_configure('flash', background='#f39c12')
 
     def refresh_naver(self):
@@ -153,8 +165,9 @@ class MainWindow:
         today          = date.today()
         date_strs      = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(DAYS)]
 
-        rank_rows  = get_naver_ranks_for_display(DAYS)
-        sales_rows = get_naver_daily_sales(DAYS)
+        rank_rows    = get_naver_ranks_for_display(DAYS)
+        sales_rows   = get_naver_daily_sales(DAYS)
+        traffic_data = get_all_traffic_data()  # {pid: {col_idx: value}}
 
         def _match(row):
             if company_filter != '전체' and row.get('company_name') != company_filter:
@@ -247,15 +260,17 @@ class MainWindow:
                 else:
                     sales_txt = f"{today_qty}개"
 
+                t_vals = traffic_data.get(pid, {})
+                traffic_vals = tuple(t_vals.get(i, '') or '·' for i in range(4))
                 tree.insert('', tk.END,
                             values=(brand_name, model_name, product_name,
-                                    '🔗' if url else '') + tuple(rank_vals) + (summary_rank, sales_txt, '🔍비교'),
+                                    '🔗' if url else '') + tuple(rank_vals) + (summary_rank, sales_txt, '🔍비교') + traffic_vals,
                             tags=('rank_row',), iid=f'nrank_{pid}_{kid}')
 
         # 총합계 행
         total_vals = ('', '', '[ 판매 총합계 ]', '') + tuple(
             str(day_totals.get(ds, 0)) for ds in date_strs
-        ) + ('', f"{sum(day_totals.values())}개", '')
+        ) + ('', f"{sum(day_totals.values())}개", '', '', '', '', '')
         tree.insert('', tk.END, values=total_vals, tags=('total_row',))
 
         self.status_lbl.config(text=f"갱신: {date.today()} | 네이버 {len(product_info)}개 상품")
@@ -868,6 +883,68 @@ class MainWindow:
             self.naver_tree.config(cursor='hand2')
         else:
             self.naver_tree.config(cursor='')
+
+    def _rename_traffic_col(self, col_index: int):
+        from tkinter.simpledialog import askstring
+        cur = self.traffic_col_names[col_index]
+        new_name = askstring(
+            "트래픽현황 컬럼명 변경",
+            f"트래픽 {col_index+1}번 컬럼명을 입력하세요:",
+            initialvalue=cur,
+            parent=self.root
+        )
+        if new_name is not None:
+            self.traffic_col_names[col_index] = new_name
+            update_traffic_column(col_index, new_name)
+            self.naver_tree.heading(f'traffic_{col_index}',
+                                    text=new_name or f'트래픽{col_index+1}')
+
+    def _on_traffic_double_click(self, event):
+        region = self.naver_tree.identify_region(event.x, event.y)
+        if region != 'cell':
+            return
+        col_id = self.naver_tree.identify_column(event.x)
+        row_id = self.naver_tree.identify_row(event.y)
+        if not row_id or not row_id.startswith('nrank_'):
+            return
+        # 컬럼 인덱스 확인 (traffic_0~3인지)
+        col_num = int(col_id.lstrip('#')) - 1
+        all_cols = self.naver_tree['columns']
+        if col_num < 0 or col_num >= len(all_cols):
+            return
+        col_name = all_cols[col_num]
+        if not col_name.startswith('traffic_'):
+            return
+        traffic_idx = int(col_name.split('_')[1])
+
+        # product_id 추출 (iid = 'nrank_{pid}_{kid}')
+        parts = row_id.split('_')
+        pid = int(parts[1])
+
+        # 셀 위치에 Entry 팝업
+        bbox = self.naver_tree.bbox(row_id, col_id)
+        if not bbox:
+            return
+        x, y, w, h = bbox
+        cur_val = self.naver_tree.set(row_id, col_name)
+        if cur_val == '·':
+            cur_val = ''
+        entry = tk.Entry(self.naver_tree, font=('맑은 고딕', 9),
+                         bg='#fffde7', relief=tk.SOLID, bd=1)
+        entry.place(x=x, y=y, width=w, height=h)
+        entry.insert(0, cur_val)
+        entry.select_range(0, tk.END)
+        entry.focus_set()
+
+        def _save(e=None):
+            val = entry.get().strip()
+            entry.destroy()
+            self.naver_tree.set(row_id, col_name, val if val else '·')
+            save_traffic_data(pid, traffic_idx, val)
+
+        entry.bind('<Return>',    _save)
+        entry.bind('<FocusOut>',  _save)
+        entry.bind('<Escape>',    lambda e: entry.destroy())
 
     def _on_naver_click(self, event):
         region = self.naver_tree.identify_region(event.x, event.y)

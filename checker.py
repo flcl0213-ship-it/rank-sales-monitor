@@ -84,34 +84,45 @@ def run_coupang_rank_check(company_filter='전체'):
 
 
 def run_naver_sales():
-    """네이버 판매 수집 — 옵션명 포함"""
+    """네이버 판매 수집 — 같은 API 키는 1회만 호출, 회사 전체 상품 대상 매칭"""
     print(f"\n[네이버 판매 수집 시작] {date.today()}")
-    brands = get_all_brands()
+    brands     = get_all_brands()
     naver_prods = get_naver_products()
-    name_map = {p['product_name'].strip(): p for p in naver_prods}
     saved = skipped = 0
 
     today     = date.today()
     yesterday = today - timedelta(days=1)
 
+    # 같은 API 키를 가진 브랜드를 그룹핑 (스마트스토어 1개 = 1회만 호출)
+    key_to_brands = {}
     for brand in brands:
         if not brand['naver_client_id']:
             continue
-        # 어제 기준(전전일 15:40~전일 15:40) + 오늘 기준(전일 15:40~당일 15:40)
-        orders = (naver_orders(brand['naver_client_id'], brand['naver_client_secret'], yesterday) +
-                  naver_orders(brand['naver_client_id'], brand['naver_client_secret'], today))
+        key = (brand['naver_client_id'], brand['naver_client_secret'])
+        key_to_brands.setdefault(key, []).append(brand)
+
+    for (client_id, client_secret), brand_group in key_to_brands.items():
+        # 이 API 키로 등록된 모든 브랜드의 상품 맵
+        brand_ids = {b['id'] for b in brand_group}
+        prod_map  = {p['product_name'].strip(): p
+                     for p in naver_prods if p['brand_id'] in brand_ids}
+
+        company = brand_group[0]['company_name']
+        orders = (naver_orders(client_id, client_secret, yesterday) +
+                  naver_orders(client_id, client_secret, today))
+        print(f"  [{company}] 주문 {len(orders)}건 수집")
 
         for o in orders:
             matched = None
-            for pname, prod in name_map.items():
+            for pname, prod in prod_map.items():
                 if pname in o['product_name'] or o['product_name'] in pname:
-                    if prod['brand_id'] == brand['id']:
-                        matched = prod
-                        break
+                    matched = prod
+                    break
 
+            brand_id = matched['brand_id'] if matched else brand_group[0]['id']
             ok = save_order(
                 order_id=o['order_id'],
-                brand_id=brand['id'],
+                brand_id=brand_id,
                 platform='naver',
                 naver_product_id=matched['id'] if matched else None,
                 option_name=o.get('option_name', ''),
