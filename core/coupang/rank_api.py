@@ -6,6 +6,7 @@
 
 import re
 import time
+import random
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -19,15 +20,18 @@ _playwright_ctx = {}
 
 
 def _get_browser():
-    """playwright Chromium 브라우저 (싱글턴)"""
+    """실제 Chrome 브라우저 + stealth (Akamai 우회)"""
     if 'browser' not in _playwright_ctx:
         from playwright.sync_api import sync_playwright
-        _playwright_ctx['pw'] = sync_playwright().__enter__()
-        _playwright_ctx['browser'] = _playwright_ctx['pw'].chromium.launch(
-            headless=True,
+        pw = sync_playwright().start()
+        _playwright_ctx['pw'] = pw
+        _playwright_ctx['browser'] = pw.chromium.launch(
+            channel='chrome',
+            headless=False,
             args=[
                 '--lang=ko-KR',
                 '--disable-blink-features=AutomationControlled',
+                '--window-position=-32000,-32000',  # 화면 밖으로
             ],
         )
         _playwright_ctx['ctx'] = _playwright_ctx['browser'].new_context(
@@ -39,10 +43,11 @@ def _get_browser():
             ),
             viewport={'width': 1280, 'height': 900},
         )
-        # navigator.webdriver = false 설정
-        _playwright_ctx['ctx'].add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
+        try:
+            from playwright_stealth import Stealth
+            _playwright_ctx['stealth'] = Stealth()
+        except ImportError:
+            _playwright_ctx['stealth'] = None
     return _playwright_ctx['ctx']
 
 
@@ -51,7 +56,7 @@ def close():
     if 'browser' in _playwright_ctx:
         try:
             _playwright_ctx['browser'].close()
-            _playwright_ctx['pw'].__exit__(None, None, None)
+            _playwright_ctx['pw'].stop()
         except Exception:
             pass
         _playwright_ctx.clear()
@@ -68,8 +73,11 @@ def find_rank(keyword: str, coupang_product_id: str) -> int:
     target = str(coupang_product_id).strip()
 
     try:
-        ctx  = _get_browser()
-        page = ctx.new_page()
+        ctx    = _get_browser()
+        stealth = _playwright_ctx.get('stealth')
+        page   = ctx.new_page()
+        if stealth:
+            stealth.apply_stealth_sync(page)
 
         for pg in range(1, RANK_MAX_PAGES + 1):
             url = (
@@ -78,20 +86,18 @@ def find_rank(keyword: str, coupang_product_id: str) -> int:
                 f'&listSize={PAGE_SIZE}&page={pg}'
             )
             try:
-                resp = page.goto(url, wait_until='domcontentloaded', timeout=15000)
+                resp = page.goto(url, wait_until='domcontentloaded', timeout=20000)
                 if resp and resp.status == 403:
                     print(f'[WARN] 쿠팡 403 차단 (키워드={keyword})')
                     page.close()
                     return 0
 
-                # 상품 목록이 로드될 때까지 잠깐 대기
                 try:
                     page.wait_for_selector('li.search-product', timeout=5000)
                 except Exception:
                     pass
 
                 html = page.content()
-
                 ids = _PRODUCT_RE.findall(html)
                 seen, unique = set(), []
                 for pid in ids:
@@ -107,7 +113,7 @@ def find_rank(keyword: str, coupang_product_id: str) -> int:
                 if len(unique) < PAGE_SIZE:
                     break
 
-                time.sleep(1.0)
+                time.sleep(random.uniform(1.5, 3.0))
 
             except Exception as e:
                 print(f'[ERROR] 쿠팡 순위 페이지 로드 실패: {e}')

@@ -3,6 +3,8 @@
 순위 체크 + 판매 수집 실행기
 """
 
+import time
+import random
 from datetime import date, timedelta
 from database.db_manager import (
     get_all_brands, get_naver_products, get_coupang_products,
@@ -79,6 +81,7 @@ def run_coupang_rank_check(company_filter='전체'):
             )
             print(f"  [{kw['type']}] {p['product_name'][:30]} / '{kw['keyword']}' → {rank}위")
             checked += 1
+            time.sleep(random.uniform(2.0, 4.0))  # 키워드 간 딜레이 (차단 방지)
 
     print(f"[쿠팡 순위 체크 완료] {checked}건")
 
