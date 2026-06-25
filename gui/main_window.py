@@ -59,8 +59,10 @@ class MainWindow:
 
         tk.Button(bar, text="조회", command=self._refresh_current_tab,
                   bg='#3498db', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=8)
-        tk.Button(bar, text="지금 체크", command=self._run_check,
+        tk.Button(bar, text="네이버 체크", command=lambda: self._run_check('naver_rank'),
                   bg='#27ae60', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT)
+        tk.Button(bar, text="쿠팡 체크", command=lambda: self._run_check('coupang_rank'),
+                  bg='#e67e22', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=4)
         tk.Button(bar, text="인쇄", command=self._print_current,
                   bg='#8e44ad', fg='white', relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=8)
 
@@ -1122,16 +1124,22 @@ class MainWindow:
         tmp.close()
         webbrowser.open(f'file:///{tmp.name}')
 
-    def _run_check(self):
+    def _run_check(self, mode: str = 'naver_rank'):
         company = self.company_var.get()
+        label_map = {'naver_rank': '네이버', 'coupang_rank': '쿠팡'}
+        label = label_map.get(mode, mode)
+
         def _check():
-            self.status_lbl.config(text="체크 중...")
+            self.root.after(0, lambda: self.status_lbl.config(text=f"{label} 체크 중..."))
             try:
                 import subprocess, sys
-                cmd = [sys.executable, 'checker.py', 'all', company]
+                cmd = [sys.executable, 'checker.py', mode, company]
                 subprocess.run(cmd, cwd='D:\\순위판매현황', timeout=1800)
-                self.root.after(0, self.refresh_naver)
-                self.root.after(0, lambda: self.status_lbl.config(text="체크 완료"))
+                if mode == 'naver_rank':
+                    self.root.after(0, self.refresh_naver)
+                else:
+                    self.root.after(0, self.refresh_coupang)
+                self.root.after(0, lambda: self.status_lbl.config(text=f"{label} 체크 완료"))
             except Exception as e:
                 self.root.after(0, lambda e=e: self.status_lbl.config(text=f"오류: {e}"))
         threading.Thread(target=_check, daemon=True).start()
