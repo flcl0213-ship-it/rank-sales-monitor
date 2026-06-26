@@ -1035,42 +1035,54 @@ class MainWindow:
         from datetime import datetime
         from database.db_manager import get_all_brands
 
+        import re as _re
         all_cols  = tree['columns']
-        skip_cols = skip_cols | {'product'}
+        skip_cols = skip_cols | {'product', 'compare'}   # 키워드비교 제외
         cols      = [c for c in all_cols if c not in skip_cols]
         headers   = [tree.heading(c)['text'] for c in cols]
         col_idx   = {c: i for i, c in enumerate(all_cols)}
 
+        # 합산 대상 컬럼 인덱스 (출력 컬럼 기준)
+        sales_print_idx   = next((i for i, c in enumerate(cols) if c == 'sales'), None)
+        traffic_print_idx = [i for i, c in enumerate(cols) if c.startswith('traffic_')]
+
         # 브랜드 → 회사 매핑
         brand_to_company = {b['brand_name']: b['company_name'] for b in get_all_brands()}
 
-        # 트리 행을 회사별로 그룹화
+        # 트리 행을 회사별로 그룹화 + 합산 데이터 수집
         company_filter = self.company_var.get()
         from collections import OrderedDict
-        company_rows: dict = OrderedDict()
+        company_rows:  dict = OrderedDict()
+        company_totals: dict = {}   # company → {'sales': int, 'traffic': [int]*4}
 
         for iid in tree.get_children():
             vals = tree.item(iid, 'values')
             tags = tree.item(iid, 'tags')
+            if 'total_row' in tags:   # 기존 총합계 행은 인쇄에서 제외
+                continue
+
             row_vals = [vals[col_idx[c]] if col_idx[c] < len(vals) else '' for c in cols]
-
-            if 'total_row' in tags:
-                style = 'background:#ecf0f1;font-weight:bold;'
-            elif 'rank_row' in tags:
-                style = 'background:#eaf4fb;'
-            else:
-                style = ''
-
-            cells = ''.join(f'<td>{v}</td>' for v in row_vals)
+            style    = 'background:#eaf4fb;' if 'rank_row' in tags else ''
+            cells    = ''.join(f'<td>{v}</td>' for v in row_vals)
             row_html = f'<tr style="{style}">{cells}</tr>'
 
-            # 회사명 추출 (brand 컬럼 값으로 역추적)
-            brand_val = vals[col_idx['brand']] if col_idx.get('brand', -1) < len(vals) else ''
+            brand_val = vals[col_idx['brand']] if 'brand' in col_idx and col_idx['brand'] < len(vals) else ''
             company   = brand_to_company.get(brand_val, brand_val) if brand_val else '기타'
-            if 'total_row' in tags:
-                company = '__total__'
-
             company_rows.setdefault(company, []).append(row_html)
+
+            # 합산
+            tot = company_totals.setdefault(company, {'sales': 0, 'traffic': [0]*4})
+            if sales_print_idx is not None:
+                m = _re.search(r'(\d+)개', row_vals[sales_print_idx])
+                if m:
+                    tot['sales'] += int(m.group(1))
+            for ti, pi in enumerate(traffic_print_idx):
+                try:
+                    v = row_vals[pi]
+                    if v and v != '·':
+                        tot['traffic'][ti] += int(v)
+                except (ValueError, IndexError):
+                    pass
 
         now          = datetime.now().strftime('%Y-%m-%d %H:%M')
         header_cells = ''.join(f'<th>{h}</th>' for h in headers)
@@ -1093,25 +1105,34 @@ class MainWindow:
         sections = []
         is_first = True
         for company, rows in company_rows.items():
-            if company == '__total__':
-                continue
             page_break = '' if is_first else 'page-break-before:always;'
             is_first   = False
+
+            # 합계 행 생성
+            tot = company_totals.get(company, {'sales': 0, 'traffic': [0]*4})
+            total_cells = []
+            for i, c in enumerate(cols):
+                if c == 'brand':
+                    total_cells.append('<td style="font-weight:bold;text-align:left">합계</td>')
+                elif c == 'sales':
+                    total_cells.append(f'<td style="font-weight:bold">{tot["sales"]}개</td>')
+                elif c.startswith('traffic_'):
+                    ti = int(c.split('_')[1])
+                    v  = tot['traffic'][ti]
+                    total_cells.append(f'<td style="font-weight:bold">{v if v else ""}</td>')
+                else:
+                    total_cells.append('<td></td>')
+            total_row_html = f'<tr style="background:#ecf0f1">{"".join(total_cells)}</tr>'
+
             sections.append(f"""
 <div style="{page_break}">
   <h2>{title} — {company}</h2>
   <div class="info">출력일시: {now}</div>
   <table>{colgroup}
     <thead><tr>{header_cells}</tr></thead>
-    <tbody>{''.join(rows)}</tbody>
+    <tbody>{''.join(rows)}{total_row_html}</tbody>
   </table>
 </div>""")
-
-        # 총합계 행은 마지막 섹션에 추가
-        total_rows = company_rows.get('__total__', [])
-        if total_rows and sections:
-            last = sections[-1]
-            sections[-1] = last.replace('</table>\n</div>', f"{''.join(total_rows)}</table>\n</div>")
 
         html = f"""<!DOCTYPE html>
 <html><head>
