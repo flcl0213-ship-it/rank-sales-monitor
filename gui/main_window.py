@@ -1075,6 +1075,20 @@ class MainWindow:
         now          = datetime.now().strftime('%Y-%m-%d %H:%M')
         header_cells = ''.join(f'<th>{h}</th>' for h in headers)
 
+        # 컬럼별 CSS 클래스 매핑
+        def _col_class(c):
+            if c == 'brand':   return 'col-brand'
+            if c == 'model':   return 'col-model'
+            if c == 'summary': return 'col-summary'
+            if c == 'sales':   return 'col-sales'
+            if c == 'compare': return 'col-compare'
+            if c.startswith('traffic'): return 'col-traffic'
+            return 'col-date'
+
+        colgroup = '<colgroup>' + ''.join(
+            f'<col class="{_col_class(c)}">' for c in cols
+        ) + '</colgroup>'
+
         # 회사별 섹션 생성
         sections = []
         is_first = True
@@ -1087,7 +1101,7 @@ class MainWindow:
 <div style="{page_break}">
   <h2>{title} — {company}</h2>
   <div class="info">출력일시: {now}</div>
-  <table>
+  <table>{colgroup}
     <thead><tr>{header_cells}</tr></thead>
     <tbody>{''.join(rows)}</tbody>
   </table>
@@ -1104,37 +1118,28 @@ class MainWindow:
 <meta charset="utf-8">
 <title>{title}</title>
 <style>
-  body {{ font-family: '맑은 고딕', Arial, sans-serif; font-size: 11px; margin: 12px; }}
-  h2 {{ margin-bottom: 4px; font-size: 14px; }}
-  .info {{ color: #555; margin-bottom: 8px; }}
-  table {{ border-collapse: collapse; width: 100%; margin-bottom: 12px; table-layout: fixed; }}
-  th {{ background: #2c3e50; color: white; padding: 5px 4px; text-align: center; font-size: 10px; word-break: keep-all; }}
-  td {{ border: 1px solid #ddd; padding: 3px 4px; text-align: center; font-size: 10px; word-break: break-all; }}
+  body {{ font-family: '맑은 고딕', Arial, sans-serif; font-size: 11px; margin: 8px; }}
+  h2 {{ margin-bottom: 4px; font-size: 13px; }}
+  .info {{ color: #555; margin-bottom: 6px; font-size: 10px; }}
+  table {{ border-collapse: collapse; width: 100%; margin-bottom: 10px; table-layout: fixed; }}
+  col.col-brand   {{ width: 80px; }}
+  col.col-model   {{ width: 70px; }}
+  col.col-date    {{ width: 42px; }}
+  col.col-summary {{ width: 72px; }}
+  col.col-sales   {{ width: 85px; }}
+  col.col-compare {{ width: 48px; }}
+  col.col-traffic {{ width: 48px; }}
+  th {{ background: #2c3e50; color: white; padding: 5px 4px; text-align: center; font-size: 11px; overflow: hidden; }}
+  td {{ border: 1px solid #ddd; padding: 5px 4px; text-align: center; font-size: 11px; overflow: hidden; white-space: nowrap; }}
   td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
   @media print {{
-    @page {{ size: A4 portrait; margin: 6mm; }}
+    @page {{ size: A4 landscape; margin: 8mm; }}
     body {{ margin: 0; }}
-    .print-wrap {{ width: 100%; overflow: hidden; }}
   }}
 </style>
 </head><body>
-<div class="print-wrap">
 {''.join(sections)}
-</div>
-<script>
-window.onload = function() {{
-  var wrap = document.querySelector('.print-wrap');
-  var pageW = 794;
-  var actual = wrap.scrollWidth;
-  if (actual > pageW) {{
-    var scale = pageW / actual;
-    wrap.style.transform = 'scale(' + scale + ')';
-    wrap.style.transformOrigin = 'top left';
-    wrap.style.width = Math.round(100 / scale) + '%';
-  }}
-  window.print();
-}};
-</script>
+<script>window.onload = function(){{ window.print(); }};</script>
 </body></html>"""
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.html',
