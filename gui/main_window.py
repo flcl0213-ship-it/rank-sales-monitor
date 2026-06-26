@@ -1122,18 +1122,18 @@ class MainWindow:
   h2 {{ margin-bottom: 4px; font-size: 13px; }}
   .info {{ color: #555; margin-bottom: 6px; font-size: 10px; }}
   table {{ border-collapse: collapse; width: 100%; margin-bottom: 10px; table-layout: fixed; }}
-  col.col-brand   {{ width: 80px; }}
-  col.col-model   {{ width: 70px; }}
-  col.col-date    {{ width: 42px; }}
-  col.col-summary {{ width: 72px; }}
-  col.col-sales   {{ width: 85px; }}
-  col.col-compare {{ width: 48px; }}
-  col.col-traffic {{ width: 48px; }}
-  th {{ background: #2c3e50; color: white; padding: 5px 4px; text-align: center; font-size: 11px; overflow: hidden; }}
-  td {{ border: 1px solid #ddd; padding: 5px 4px; text-align: center; font-size: 11px; overflow: hidden; white-space: nowrap; }}
+  col.col-brand   {{ width: 68px; }}
+  col.col-model   {{ width: 62px; }}
+  col.col-date    {{ width: 38px; }}
+  col.col-summary {{ width: 68px; }}
+  col.col-sales   {{ width: 78px; }}
+  col.col-compare {{ width: 42px; }}
+  col.col-traffic {{ width: 32px; }}
+  th {{ background: #2c3e50; color: white; padding: 5px 3px; text-align: center; font-size: 10px; overflow: hidden; }}
+  td {{ border: 1px solid #ddd; padding: 5px 3px; text-align: center; font-size: 10px; overflow: hidden; white-space: nowrap; }}
   td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
   @media print {{
-    @page {{ size: A4 landscape; margin: 8mm; }}
+    @page {{ size: A4 portrait; margin: 8mm; }}
     body {{ margin: 0; }}
   }}
 </style>
