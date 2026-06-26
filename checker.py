@@ -199,6 +199,7 @@ if __name__ == '__main__':
         run_coupang_rank_check(company)
     elif mode == 'naver_rank':
         run_rank_check(company)
+        run_naver_sales()
     elif mode == 'coupang_rank':
         run_coupang_rank_check(company)
     elif mode == 'naver_sales':
