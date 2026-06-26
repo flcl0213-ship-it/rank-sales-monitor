@@ -1107,15 +1107,34 @@ class MainWindow:
   body {{ font-family: '맑은 고딕', Arial, sans-serif; font-size: 11px; margin: 12px; }}
   h2 {{ margin-bottom: 4px; font-size: 14px; }}
   .info {{ color: #555; margin-bottom: 8px; }}
-  table {{ border-collapse: collapse; width: 100%; margin-bottom: 12px; }}
-  th {{ background: #2c3e50; color: white; padding: 5px 8px; text-align: center; }}
-  td {{ border: 1px solid #ddd; padding: 4px 7px; text-align: center; white-space: nowrap; }}
+  table {{ border-collapse: collapse; width: 100%; margin-bottom: 12px; table-layout: fixed; }}
+  th {{ background: #2c3e50; color: white; padding: 5px 4px; text-align: center; font-size: 10px; word-break: keep-all; }}
+  td {{ border: 1px solid #ddd; padding: 3px 4px; text-align: center; font-size: 10px; word-break: break-all; }}
   td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
-  @media print {{ @page {{ size: landscape; margin: 10mm; }} }}
+  @media print {{
+    @page {{ size: A4 portrait; margin: 6mm; }}
+    body {{ margin: 0; }}
+    .print-wrap {{ width: 100%; overflow: hidden; }}
+  }}
 </style>
 </head><body>
+<div class="print-wrap">
 {''.join(sections)}
-<script>window.onload = function(){{ window.print(); }}</script>
+</div>
+<script>
+window.onload = function() {{
+  var wrap = document.querySelector('.print-wrap');
+  var pageW = 794;
+  var actual = wrap.scrollWidth;
+  if (actual > pageW) {{
+    var scale = pageW / actual;
+    wrap.style.transform = 'scale(' + scale + ')';
+    wrap.style.transformOrigin = 'top left';
+    wrap.style.width = Math.round(100 / scale) + '%';
+  }}
+  window.print();
+}};
+</script>
 </body></html>"""
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.html',
