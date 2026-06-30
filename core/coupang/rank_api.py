@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from config import RANK_MAX_PAGES
 
 PAGE_SIZE   = 72
-PRODUCT_RE  = re.compile(r'data-product-id="(\d+)"')
+PRODUCT_RE  = re.compile(r'/vp/products/(\d+)')
 BLOCK_SIGNALS = ['사용권한이 없습니다', 'Access Denied', 'Robot Check']
 
 CDP_PORT     = 9222
@@ -153,11 +153,14 @@ class CoupangRankTracker:
                 f'&listSize={PAGE_SIZE}&sorter=scoreDesc&channel=user'
             )
             try:
-                page.goto(url, wait_until='networkidle', timeout=30000)
-
-                # React 렌더링 완료 대기
                 try:
-                    page.wait_for_selector('[data-product-id]', timeout=8000)
+                    page.goto(url, wait_until='load', timeout=20000)
+                except Exception:
+                    pass
+
+                # 상품 렌더링 완료 대기
+                try:
+                    page.wait_for_selector('a[href*="/vp/products/"]', timeout=8000)
                 except Exception:
                     pass
                 time.sleep(random.uniform(1.5, 2.5))
