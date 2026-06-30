@@ -1178,8 +1178,24 @@ class MainWindow:
             self.root.after(0, lambda: self.status_lbl.config(text=f"{label} 체크 중..."))
             try:
                 import subprocess, sys
-                cmd = [sys.executable, 'checker.py', mode, company]
-                subprocess.run(cmd, cwd='D:\\순위판매현황', timeout=1800)
+                cmd = [sys.executable, '-u', 'checker.py', mode, company]
+                result = subprocess.run(
+                    cmd, cwd='D:\\순위판매현황', timeout=1800,
+                    stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace'
+                )
+                stderr_out = result.stderr or ''
+                if stderr_out:
+                    print(stderr_out, end='')
+                # Chrome 실행 중 오류 감지
+                if 'Chrome이 실행 중입니다' in stderr_out or \
+                   'user data directory is already in use' in stderr_out.lower():
+                    import tkinter.messagebox as mb
+                    self.root.after(0, lambda: self.status_lbl.config(text="Chrome 종료 후 다시 시도"))
+                    self.root.after(0, lambda: mb.showerror(
+                        'Chrome 충돌',
+                        'Chrome이 실행 중입니다.\n쿠팡 체크 전에 Chrome을 완전히 종료해 주세요.'
+                    ))
+                    return
                 if mode == 'naver_rank':
                     self.root.after(0, self.refresh_naver)
                 else:

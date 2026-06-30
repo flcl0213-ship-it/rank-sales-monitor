@@ -51,7 +51,9 @@ def run_rank_check(company_filter='전체'):
 
 
 def run_coupang_rank_check(company_filter='전체'):
-    """쿠팡 전체 상품 × 대표 키워드 순위 체크 (스크래핑)"""
+    """쿠팡 순위 체크 — 같은 키워드는 한 번 검색으로 여러 상품 동시 매칭"""
+    from core.coupang.rank_api import CoupangRankTracker
+
     print(f"\n[쿠팡 순위 체크 시작] {date.today()} (회사={company_filter})")
     all_products = get_coupang_products()
     if company_filter != '전체':
@@ -60,28 +62,47 @@ def run_coupang_rank_check(company_filter='전체'):
     else:
         products = all_products
 
-    today   = date.today()
-    checked = 0
+    today = date.today()
 
+    # 키워드별 (kw_row, product_row) 그룹핑
+    keyword_map: dict[str, list] = {}
     for p in products:
         if not p.get('coupang_product_id'):
             continue
-        keywords = [k for k in get_keywords(p['id'], platform='coupang') if k['type'] == 'main']
-        for kw in keywords:
-            rank = coupang_rank(
-                keyword=kw['keyword'],
-                coupang_product_id=p['coupang_product_id'],
-            )
-            save_rank(
-                keyword_id=kw['id'],
-                keyword_type=kw['type'],
-                rank=rank,
-                checked_date=today,
-                coupang_product_id=p['id'],
-            )
-            print(f"  [{kw['type']}] {p['product_name'][:30]} / '{kw['keyword']}' → {rank}위")
-            checked += 1
-            time.sleep(random.uniform(2.0, 4.0))  # 키워드 간 딜레이 (차단 방지)
+        for kw in get_keywords(p['id'], platform='coupang'):
+            if kw['type'] != 'main':
+                continue
+            keyword_map.setdefault(kw['keyword'], []).append((kw, p))
+
+    if not keyword_map:
+        print('[INFO] 체크할 쿠팡 키워드 없음')
+        return
+
+    tracker = CoupangRankTracker()
+    checked = 0
+
+    try:
+        for keyword, pairs in keyword_map.items():
+            product_ids = [p['coupang_product_id'] for _, p in pairs]
+            rank_results = tracker.find_ranks(keyword, product_ids)
+            rank_map = {r['product_id']: r['rank'] for r in rank_results if r['found']}
+
+            for kw, p in pairs:
+                pid_str = str(p['coupang_product_id'])
+                rank = rank_map.get(pid_str) or 0
+                save_rank(
+                    keyword_id=kw['id'],
+                    keyword_type=kw['type'],
+                    rank=rank,
+                    checked_date=today,
+                    coupang_product_id=p['id'],
+                )
+                print(f"  [{kw['type']}] {p['product_name'][:30]} / '{keyword}' → {rank}위")
+                checked += 1
+
+            time.sleep(random.uniform(2.0, 4.0))  # 키워드 간 딜레이
+    finally:
+        tracker.close()
 
     print(f"[쿠팡 순위 체크 완료] {checked}건")
 
