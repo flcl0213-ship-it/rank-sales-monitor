@@ -146,6 +146,24 @@ class CoupangRankTracker:
             print(f'[ERROR] CDP 연결 실패: {e}')
             return list(results.values())
 
+        # 첫 페이지 전: 홈 경유 (검색 URL 직행 패턴 회피)
+        try:
+            cur = page.url or ''
+            if 'coupang.com' not in cur or '/np/search' in cur:
+                page.goto('https://www.coupang.com', wait_until='load', timeout=15000)
+                time.sleep(random.uniform(1.5, 3.0))
+                # 검색창에 키워드 입력 후 엔터
+                page.fill('input#headerSearchKeyword', keyword)
+                time.sleep(random.uniform(0.5, 1.0))
+                page.press('input#headerSearchKeyword', 'Enter')
+                time.sleep(random.uniform(2.0, 3.5))
+                # 1페이지는 이미 로드됨 → 루프에서 pg=1 스킵용 플래그
+                _home_searched = True
+            else:
+                _home_searched = False
+        except Exception:
+            _home_searched = False
+
         for pg in range(1, max_page + 1):
             url = (
                 f'https://www.coupang.com/np/search'
@@ -153,10 +171,14 @@ class CoupangRankTracker:
                 f'&listSize={PAGE_SIZE}&sorter=scoreDesc&channel=user'
             )
             try:
-                try:
-                    page.goto(url, wait_until='load', timeout=20000)
-                except Exception:
+                # pg=1은 홈 검색으로 이미 이동했으면 URL 재방문 생략
+                if pg == 1 and _home_searched:
                     pass
+                else:
+                    try:
+                        page.goto(url, wait_until='load', timeout=20000)
+                    except Exception:
+                        pass
 
                 # 상품 렌더링 완료 대기
                 try:
