@@ -36,6 +36,7 @@ def run_rank_check(company_filter='전체'):
                 product_name=p['product_name'],
                 seller_name=p.get('seller', ''),
                 url_naver=p.get('url_naver', ''),
+                naver_product_id=p.get('naver_product_id', ''),
             )
             save_rank(
                 keyword_id=kw['id'],

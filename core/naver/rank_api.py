@@ -11,7 +11,7 @@ from config import NAVER_SEARCH_CLIENT_ID, NAVER_SEARCH_CLIENT_SECRET, RANK_MAX_
 
 
 def find_rank(keyword: str, product_name: str, seller_name: str = '',
-              url_naver: str = '') -> int:
+              url_naver: str = '', naver_product_id: str = '') -> int:
     """
     네이버 쇼핑에서 키워드 검색 후 내 상품 순위 반환.
 
@@ -54,7 +54,7 @@ def find_rank(keyword: str, product_name: str, seller_name: str = '',
 
             for idx, item in enumerate(items):
                 rank = start + idx
-                if _is_match(item, product_name, seller_name, url_naver):
+                if _is_match(item, product_name, seller_name, url_naver, naver_product_id):
                     return rank
 
         except Exception as e:
@@ -64,18 +64,23 @@ def find_rank(keyword: str, product_name: str, seller_name: str = '',
     return 0
 
 
-def _is_match(item: dict, product_name: str, seller_name: str, url_naver: str) -> bool:
+def _is_match(item: dict, product_name: str, seller_name: str,
+              url_naver: str = '', naver_product_id: str = '') -> bool:
     """네이버 API 응답 item 과 내 상품이 일치하는지 확인"""
     title   = item.get("title", "").replace("<b>", "").replace("</b>", "").lower()
     mall    = item.get("mallName", "").lower()
     link    = item.get("link", "")
     prod_id = item.get("productId", "")
 
-    # URL/productId 매칭 (가장 정확)
+    # naver_product_id → link에 포함 여부 (가장 정확)
+    if naver_product_id and naver_product_id in link:
+        return True
+
+    # 기존 URL 매칭 (fallback)
     if url_naver and (prod_id in url_naver or url_naver.rstrip('/') in link):
         return True
 
-    # 상품명 + 판매자 매칭
+    # 상품명 + 판매자 매칭 (최후 수단)
     name_ok   = product_name.lower() in title or title in product_name.lower()
     seller_ok = not seller_name or seller_name.lower() in mall or mall in seller_name.lower()
 
