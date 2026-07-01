@@ -163,7 +163,7 @@ class CoupangRankTracker:
                     page.wait_for_selector('a[href*="/vp/products/"]', timeout=8000)
                 except Exception:
                     pass
-                time.sleep(random.uniform(1.5, 2.5))
+                time.sleep(random.uniform(2.0, 3.5))
 
                 html = page.content()
 
@@ -172,10 +172,10 @@ class CoupangRankTracker:
                     print(f'[WARN] 차단 (키워드={keyword}, pg={pg})')
                     if self._fail_count >= self.MAX_FAILS:
                         print('[INFO] 차단 지속 — 잠시 대기 후 재시도')
-                        time.sleep(random.uniform(15, 30))
+                        time.sleep(random.uniform(30, 60))
                         self._fail_count = 0
                     else:
-                        time.sleep(random.uniform(5, 10))
+                        time.sleep(random.uniform(10, 20))
                     break
 
                 self._fail_count = 0
@@ -197,7 +197,7 @@ class CoupangRankTracker:
                 if page_organic < PAGE_SIZE // 2:
                     break
 
-                time.sleep(random.uniform(1.5, 2.5))
+                time.sleep(random.uniform(3.0, 5.0))
 
             except Exception as e:
                 print(f'[ERROR] 페이지 로드 실패 (pg={pg}): {e}')
